@@ -1,12 +1,22 @@
-// src/services/userService.js
 import axios from 'axios';
 
-const API = import.meta.env.VITE_API_URL;
+const rawApi = import.meta.env.VITE_API_URL || '';
+
+const normalizeBase = (base) => {
+  const clean = String(base || '').trim().replace(/\/+$/, '');
+  return clean.replace(/\/api$/i, '');
+};
+
+const API = `${normalizeBase(rawApi)}/api`;
 const API_URL = `${API}/users`;
 
 const getAuthHeaders = () => {
   const token = localStorage.getItem('token');
-  return { headers: { Authorization: `Bearer ${token}` } };
+  return {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  };
 };
 
 export const getProfile = () => axios.get(`${API_URL}/me`, getAuthHeaders());

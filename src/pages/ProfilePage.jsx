@@ -1,11 +1,9 @@
-// src/pages/ProfilePage.jsx
 import { useState, useEffect, useMemo } from 'react';
 import styled from 'styled-components';
 import { useAuth } from '../context/AuthContext';
 import * as userService from '../services/userService';
 import * as clinicaService from '../services/clinicaService';
 
-// --- Estilos para la página de perfil ---
 const ProfileContainer = styled.div`
   max-width: 900px;
   margin: 0 auto;
@@ -47,13 +45,11 @@ const FormActions = styled.div`
   grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 12px;
 `;
 const ErrorMessage = styled.p`color: #e74c3c; font-size: 0.8rem; margin-top: 5px;`;
-
 const Hint = styled.p`
   margin: 0 0 1rem 0;
   color: #7f8c8d;
   font-size: 0.85rem;
 `;
-
 const MiniAlert = styled.div`
   grid-column: 1 / -1;
   background: #fff5f5;
@@ -64,7 +60,9 @@ const MiniAlert = styled.div`
   font-size: 0.85rem;
 `;
 
-// --- Componente principal ---
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_REGEX = /^[0-9+\-\s()]{7,20}$/;
+
 export default function ProfilePage() {
   const { user, updateUser, refreshMe } = useAuth();
 
@@ -73,11 +71,9 @@ export default function ProfilePage() {
     return r === 'admin';
   }, [user]);
 
-  // Perfil
   const [profileData, setProfileData] = useState({ nombre: '', email: '', telefono: '' });
   const [profileErrors, setProfileErrors] = useState({});
 
-  // Password
   const [passwordData, setPasswordData] = useState({
     current_password: '',
     new_password: '',
@@ -85,7 +81,6 @@ export default function ProfilePage() {
   });
   const [passwordErrors, setPasswordErrors] = useState({});
 
-  // Clínica (solo admin)
   const [clinicaData, setClinicaData] = useState({
     nombre: '',
     telefono: '',
@@ -97,7 +92,6 @@ export default function ProfilePage() {
   const [loadingClinica, setLoadingClinica] = useState(false);
   const [clinicaLoadError, setClinicaLoadError] = useState('');
 
-  // Cargar perfil desde user
   useEffect(() => {
     if (user) {
       setProfileData({
@@ -108,7 +102,6 @@ export default function ProfilePage() {
     }
   }, [user]);
 
-  // Cargar clínica si es admin
   useEffect(() => {
     const loadClinica = async () => {
       if (!isAdmin) return;
@@ -118,8 +111,6 @@ export default function ProfilePage() {
 
       try {
         const res = await clinicaService.getMiClinica();
-
-        // backend: { data: { ... } }
         const c = res.data?.data || res.data;
 
         if (!c || !c.id) {
@@ -146,27 +137,99 @@ export default function ProfilePage() {
     loadClinica();
   }, [isAdmin]);
 
-  // handlers
+  const validateProfile = () => {
+    const e = {};
+    if (!profileData.nombre.trim()) e.nombre = 'El nombre es obligatorio.';
+    else if (profileData.nombre.trim().length < 3) e.nombre = 'Mínimo 3 caracteres.';
+
+    if (!profileData.email.trim()) e.email = 'El correo es obligatorio.';
+    else if (!EMAIL_REGEX.test(profileData.email.trim())) e.email = 'Correo inválido.';
+
+    if (profileData.telefono.trim() && !PHONE_REGEX.test(profileData.telefono.trim())) {
+      e.telefono = 'Teléfono inválido.';
+    }
+
+    return e;
+  };
+
+  const validatePassword = () => {
+    const e = {};
+
+    if (!passwordData.current_password.trim()) {
+      e.current_password = 'La contraseña actual es obligatoria.';
+    }
+
+    if (!passwordData.new_password.trim()) {
+      e.new_password = 'La nueva contraseña es obligatoria.';
+    } else if (passwordData.new_password.length < 8) {
+      e.new_password = 'Debe tener al menos 8 caracteres.';
+    }
+
+    if (!passwordData.confirm_password.trim()) {
+      e.confirm_password = 'Debes confirmar la nueva contraseña.';
+    } else if (passwordData.new_password !== passwordData.confirm_password) {
+      e.confirm_password = 'Las contraseñas no coinciden.';
+    }
+
+    return e;
+  };
+
+  const validateClinica = () => {
+    const e = {};
+
+    if (!clinicaData.nombre.trim()) e.nombre = 'El nombre es obligatorio.';
+    else if (clinicaData.nombre.trim().length < 3) e.nombre = 'Mínimo 3 caracteres.';
+
+    if (clinicaData.telefono.trim() && !PHONE_REGEX.test(clinicaData.telefono.trim())) {
+      e.telefono = 'Teléfono inválido.';
+    }
+
+    if (clinicaData.direccion.trim() && clinicaData.direccion.trim().length < 5) {
+      e.direccion = 'La dirección es muy corta.';
+    }
+
+    if (clinicaData.email.trim() && !EMAIL_REGEX.test(clinicaData.email.trim())) {
+      e.email = 'Correo inválido.';
+    }
+
+    return e;
+  };
+
   const handleProfileChange = (e) => {
     const { name, value } = e.target;
-    setProfileData(prev => ({ ...prev, [name]: value }));
+    setProfileData((prev) => ({ ...prev, [name]: value }));
+    if (profileErrors[name]) setProfileErrors((prev) => ({ ...prev, [name]: null }));
   };
 
   const handlePasswordChange = (e) => {
     const { name, value } = e.target;
-    setPasswordData(prev => ({ ...prev, [name]: value }));
+    setPasswordData((prev) => ({ ...prev, [name]: value }));
+    if (passwordErrors[name]) setPasswordErrors((prev) => ({ ...prev, [name]: null }));
   };
 
   const handleClinicaChange = (e) => {
     const { name, value } = e.target;
-    setClinicaData(prev => ({ ...prev, [name]: value }));
+    setClinicaData((prev) => ({ ...prev, [name]: value }));
+    if (clinicaErrors[name]) setClinicaErrors((prev) => ({ ...prev, [name]: null }));
   };
 
-  // submits
   const handleProfileSubmit = async (e) => {
     e.preventDefault();
+
+    const errs = validateProfile();
+    if (Object.keys(errs).length) {
+      setProfileErrors(errs);
+      return;
+    }
+
     try {
-      const res = await userService.updateProfile(profileData);
+      const payload = {
+        nombre: profileData.nombre.trim(),
+        email: profileData.email.trim().toLowerCase(),
+        telefono: profileData.telefono.trim(),
+      };
+
+      const res = await userService.updateProfile(payload);
       const updated = res.data?.user || res.data;
       updateUser(updated);
 
@@ -186,8 +249,9 @@ export default function ProfilePage() {
   const handlePasswordSubmit = async (e) => {
     e.preventDefault();
 
-    if (passwordData.new_password !== passwordData.confirm_password) {
-      setPasswordErrors({ confirm_password: 'Las contraseñas no coinciden.' });
+    const errs = validatePassword();
+    if (Object.keys(errs).length) {
+      setPasswordErrors(errs);
       return;
     }
 
@@ -205,19 +269,25 @@ export default function ProfilePage() {
 
   const handleClinicaSubmit = async (e) => {
     e.preventDefault();
+
+    const errs = validateClinica();
+    if (Object.keys(errs).length) {
+      setClinicaErrors(errs);
+      return;
+    }
+
     try {
       const payload = {
         nombre: (clinicaData.nombre || '').trim(),
         telefono: (clinicaData.telefono || '').trim(),
         direccion: (clinicaData.direccion || '').trim(),
         nit: (clinicaData.nit || '').trim(),
-        email: (clinicaData.email || '').trim(),
+        email: (clinicaData.email || '').trim().toLowerCase(),
       };
 
       const res = await clinicaService.updateMiClinica(payload);
       const c = res.data?.data || res.data;
 
-      // refresca inputs con lo que devuelve backend
       setClinicaData({
         nombre: c?.nombre ?? payload.nombre,
         telefono: c?.telefono ?? payload.telefono,
@@ -237,25 +307,47 @@ export default function ProfilePage() {
 
   return (
     <ProfileContainer>
-      {/* PERFIL */}
       <Card>
         <CardTitle>Editar perfil</CardTitle>
-        <Form onSubmit={handleProfileSubmit}>
+        <Form onSubmit={handleProfileSubmit} noValidate>
           <FormGroup>
             <Label htmlFor="nombre">Nombre completo</Label>
-            <Input id="nombre" name="nombre" value={profileData.nombre} onChange={handleProfileChange} />
+            <Input
+              id="nombre"
+              name="nombre"
+              placeholder="Nombre completo"
+              value={profileData.nombre}
+              onChange={handleProfileChange}
+              maxLength={100}
+            />
             {profileErrors.nombre && <ErrorMessage>{profileErrors.nombre}</ErrorMessage>}
           </FormGroup>
 
           <FormGroup>
             <Label htmlFor="email">Correo electrónico</Label>
-            <Input id="email" name="email" type="email" value={profileData.email} onChange={handleProfileChange} />
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              placeholder="correo@ejemplo.com"
+              value={profileData.email}
+              onChange={handleProfileChange}
+              maxLength={120}
+            />
             {profileErrors.email && <ErrorMessage>{profileErrors.email}</ErrorMessage>}
           </FormGroup>
 
           <FormGroup className="full-width">
             <Label htmlFor="telefono">Teléfono</Label>
-            <Input id="telefono" name="telefono" type="tel" value={profileData.telefono} onChange={handleProfileChange} />
+            <Input
+              id="telefono"
+              name="telefono"
+              type="tel"
+              placeholder="Ej: 70707070"
+              value={profileData.telefono}
+              onChange={handleProfileChange}
+              maxLength={20}
+            />
             {profileErrors.telefono && <ErrorMessage>{profileErrors.telefono}</ErrorMessage>}
           </FormGroup>
 
@@ -265,16 +357,16 @@ export default function ProfilePage() {
         </Form>
       </Card>
 
-      {/* PASSWORD */}
       <Card>
         <CardTitle>Cambiar contraseña</CardTitle>
-        <Form onSubmit={handlePasswordSubmit}>
+        <Form onSubmit={handlePasswordSubmit} noValidate>
           <FormGroup className="full-width">
             <Label htmlFor="current_password">Contraseña actual</Label>
             <Input
               id="current_password"
               name="current_password"
               type="password"
+              placeholder="Contraseña actual"
               value={passwordData.current_password}
               onChange={handlePasswordChange}
             />
@@ -287,6 +379,7 @@ export default function ProfilePage() {
               id="new_password"
               name="new_password"
               type="password"
+              placeholder="Mínimo 8 caracteres"
               value={passwordData.new_password}
               onChange={handlePasswordChange}
             />
@@ -299,6 +392,7 @@ export default function ProfilePage() {
               id="confirm_password"
               name="confirm_password"
               type="password"
+              placeholder="Repite la nueva contraseña"
               value={passwordData.confirm_password}
               onChange={handlePasswordChange}
             />
@@ -311,7 +405,6 @@ export default function ProfilePage() {
         </Form>
       </Card>
 
-      {/* CLÍNICA (SOLO ADMIN) */}
       {isAdmin && (
         <Card>
           <CardTitle>Editar clínica</CardTitle>
@@ -332,14 +425,16 @@ export default function ProfilePage() {
           {loadingClinica ? (
             <p style={{ color: '#7f8c8d' }}>Cargando clínica...</p>
           ) : (
-            <Form onSubmit={handleClinicaSubmit}>
+            <Form onSubmit={handleClinicaSubmit} noValidate>
               <FormGroup>
                 <Label htmlFor="clinica_nombre">Nombre</Label>
                 <Input
                   id="clinica_nombre"
                   name="nombre"
+                  placeholder="Nombre de la clínica"
                   value={clinicaData.nombre}
                   onChange={handleClinicaChange}
+                  maxLength={120}
                 />
                 {clinicaErrors.nombre && <ErrorMessage>{clinicaErrors.nombre}</ErrorMessage>}
               </FormGroup>
@@ -349,8 +444,10 @@ export default function ProfilePage() {
                 <Input
                   id="clinica_telefono"
                   name="telefono"
+                  placeholder="Teléfono"
                   value={clinicaData.telefono}
                   onChange={handleClinicaChange}
+                  maxLength={20}
                 />
                 {clinicaErrors.telefono && <ErrorMessage>{clinicaErrors.telefono}</ErrorMessage>}
               </FormGroup>
@@ -360,8 +457,10 @@ export default function ProfilePage() {
                 <Input
                   id="clinica_direccion"
                   name="direccion"
+                  placeholder="Dirección"
                   value={clinicaData.direccion}
                   onChange={handleClinicaChange}
+                  maxLength={180}
                 />
                 {clinicaErrors.direccion && <ErrorMessage>{clinicaErrors.direccion}</ErrorMessage>}
               </FormGroup>
@@ -371,8 +470,10 @@ export default function ProfilePage() {
                 <Input
                   id="clinica_nit"
                   name="nit"
+                  placeholder="NIT"
                   value={clinicaData.nit}
                   onChange={handleClinicaChange}
+                  maxLength={30}
                 />
                 {clinicaErrors.nit && <ErrorMessage>{clinicaErrors.nit}</ErrorMessage>}
               </FormGroup>
@@ -383,8 +484,10 @@ export default function ProfilePage() {
                   id="clinica_email"
                   name="email"
                   type="email"
+                  placeholder="clinica@correo.com"
                   value={clinicaData.email}
                   onChange={handleClinicaChange}
+                  maxLength={120}
                 />
                 {clinicaErrors.email && <ErrorMessage>{clinicaErrors.email}</ErrorMessage>}
               </FormGroup>

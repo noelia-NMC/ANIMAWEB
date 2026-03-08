@@ -1,10 +1,16 @@
-// src/services/laboratorio.js
 import axios from 'axios';
 
-const API = import.meta.env.VITE_API_URL;
+const rawApi = import.meta.env.VITE_API_URL || '';
+
+const normalizeBase = (base) => {
+  const clean = String(base || '').trim().replace(/\/+$/, '');
+  return clean.replace(/\/api$/i, '');
+};
+
+const API = `${normalizeBase(rawApi)}/api`;
 
 const getHeaders = () => {
-  const user = JSON.parse(localStorage.getItem('user'));
+  const user = JSON.parse(localStorage.getItem('user') || 'null');
   const token = localStorage.getItem('token');
 
   return {

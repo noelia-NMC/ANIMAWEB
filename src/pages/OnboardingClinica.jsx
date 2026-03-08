@@ -1,4 +1,3 @@
-// src/pages/OnboardingClinica.jsx
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { registerClinicAndAdmin } from '../services/onboardingService';
@@ -9,6 +8,10 @@ import {
   SectionLabel, SectionLine, SectionText, FieldGrid, FieldRow, FieldWrap, Label,
   Input, SubmitButton, CardFooter, SecondaryButton, ErrorText, LoadingSpinner,
 } from '../styles/onboardingStyled';
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_REGEX = /^[0-9+\-\s()]{7,20}$/;
+const NIT_REGEX = /^[0-9a-zA-Z-]{3,30}$/;
 
 export default function OnboardingClinica() {
   const navigate = useNavigate();
@@ -28,29 +31,168 @@ export default function OnboardingClinica() {
     password: '',
   });
 
+  const [errors, setErrors] = useState({});
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const isValidEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+  const validateField = (name, value, source = 'clinica') => {
+    const val = String(value ?? '').trim();
 
-  const setC = (key) => (e) => setClinica((p) => ({ ...p, [key]: e.target.value }));
-  const setA = (key) => (e) => setAdmin((p) => ({ ...p, [key]: e.target.value }));
+    if (source === 'clinica') {
+      switch (name) {
+        case 'nombre':
+          if (!val) return 'El nombre de la clínica es obligatorio.';
+          if (val.length < 3) return 'Debe tener al menos 3 caracteres.';
+          if (val.length > 120) return 'El nombre es demasiado largo.';
+          return null;
+
+        case 'telefono':
+          if (!val) return null;
+          if (!PHONE_REGEX.test(val)) return 'Teléfono inválido.';
+          return null;
+
+        case 'direccion':
+          if (!val) return null;
+          if (val.length < 5) return 'La dirección es muy corta.';
+          if (val.length > 180) return 'La dirección es demasiado larga.';
+          return null;
+
+        case 'nit':
+          if (!val) return null;
+          if (!NIT_REGEX.test(val)) return 'NIT inválido.';
+          return null;
+
+        case 'email':
+          if (!val) return null;
+          if (!EMAIL_REGEX.test(val)) return 'El correo de la clínica no es válido.';
+          return null;
+
+        default:
+          return null;
+      }
+    }
+
+    if (source === 'admin') {
+      switch (name) {
+        case 'nombre_admin':
+          if (!val) return 'El nombre del administrador es obligatorio.';
+          if (val.length < 3) return 'Debe tener al menos 3 caracteres.';
+          if (val.length > 100) return 'El nombre es demasiado largo.';
+          return null;
+
+        case 'email_admin':
+          if (!val) return 'El correo del administrador es obligatorio.';
+          if (!EMAIL_REGEX.test(val)) return 'Correo inválido.';
+          return null;
+
+        case 'password':
+          if (!val) return 'La contraseña es obligatoria.';
+          if (val.length < 8) return 'La contraseña debe tener mínimo 8 caracteres.';
+          if (val.length > 50) return 'La contraseña es demasiado larga.';
+          return null;
+
+        default:
+          return null;
+      }
+    }
+
+    return null;
+  };
+
+  const validateAll = () => {
+    const newErrors = {};
+
+    Object.keys(clinica).forEach((key) => {
+      const err = validateField(key, clinica[key], 'clinica');
+      if (err) newErrors[key] = err;
+    });
+
+    Object.keys(admin).forEach((key) => {
+      const err = validateField(key, admin[key], 'admin');
+      if (err) newErrors[key] = err;
+    });
+
+    return newErrors;
+  };
+
+  const setC = (key) => (e) => {
+    let value = e.target.value;
+
+    if (key === 'telefono') {
+      value = value.replace(/[^0-9+\-\s()]/g, '');
+    }
+
+    if (key === 'nit') {
+      value = value.replace(/[^0-9a-zA-Z-]/g, '');
+    }
+
+    setClinica((p) => ({ ...p, [key]: value }));
+
+    if (errors[key]) {
+      setErrors((prev) => ({
+        ...prev,
+        [key]: validateField(key, value, 'clinica'),
+      }));
+    }
+  };
+
+  const setA = (key) => (e) => {
+    const value = e.target.value;
+
+    setAdmin((p) => ({ ...p, [key]: value }));
+
+    if (errors[key]) {
+      setErrors((prev) => ({
+        ...prev,
+        [key]: validateField(key, value, 'admin'),
+      }));
+    }
+  };
+
+  const handleBlurClinica = (key) => () => {
+    setErrors((prev) => ({
+      ...prev,
+      [key]: validateField(key, clinica[key], 'clinica'),
+    }));
+  };
+
+  const handleBlurAdmin = (key) => () => {
+    setErrors((prev) => ({
+      ...prev,
+      [key]: validateField(key, admin[key], 'admin'),
+    }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
 
-    if (!clinica.nombre.trim()) return setErrorMsg('Falta el nombre de la clínica.');
-    if (!admin.nombre_admin.trim()) return setErrorMsg('Falta el nombre del administrador.');
-    if (!admin.email_admin.trim() || !isValidEmail(admin.email_admin)) return setErrorMsg('El correo del administrador no es válido.');
-    if (!admin.password || admin.password.length < 8) return setErrorMsg('La contraseña debe tener mínimo 8 caracteres.');
-    if (clinica.email?.trim() && !isValidEmail(clinica.email.trim())) return setErrorMsg('El correo de la clínica no es válido.');
+    const validationErrors = validateAll();
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      setErrorMsg('Revisa los campos obligatorios.');
+      return;
+    }
 
     try {
       setLoading(true);
 
-      // ✅ ahora registerClinicAndAdmin devuelve axios response
-      const res = await registerClinicAndAdmin({ clinica, admin });
+      const payload = {
+        clinica: {
+          nombre: clinica.nombre.trim(),
+          telefono: clinica.telefono.trim() || '',
+          direccion: clinica.direccion.trim() || '',
+          nit: clinica.nit.trim() || '',
+          email: clinica.email.trim().toLowerCase() || '',
+        },
+        admin: {
+          nombre_admin: admin.nombre_admin.trim(),
+          email_admin: admin.email_admin.trim().toLowerCase(),
+          password: admin.password,
+        },
+      };
+
+      const res = await registerClinicAndAdmin(payload);
 
       const token = res?.data?.token;
       const user = res?.data?.user;
@@ -60,13 +202,9 @@ export default function OnboardingClinica() {
         return;
       }
 
-      // ✅ guardar sesión bien
       authLogin(user, token);
-
-      // ✅ entrar
       navigate('/dashboard');
     } catch (err) {
-      // 409 = conflicto (email repetido normalmente)
       setErrorMsg(err.response?.data?.message || 'Ocurrió un error al crear la clínica.');
     } finally {
       setLoading(false);
@@ -102,29 +240,71 @@ export default function OnboardingClinica() {
           <FieldGrid>
             <FieldWrap delay="0.1s">
               <Label>Nombre *</Label>
-              <Input value={clinica.nombre} onChange={setC('nombre')} placeholder="Ej: Clínica Veterinaria Tanuki" disabled={loading} />
+              <Input
+                value={clinica.nombre}
+                onChange={setC('nombre')}
+                onBlur={handleBlurClinica('nombre')}
+                placeholder="Ej: Clínica Veterinaria Tanuki"
+                disabled={loading}
+                maxLength={120}
+              />
+              {errors.nombre && <ErrorText>{errors.nombre}</ErrorText>}
             </FieldWrap>
 
             <FieldRow>
               <FieldWrap delay="0.15s">
                 <Label>Teléfono</Label>
-                <Input value={clinica.telefono} onChange={setC('telefono')} placeholder="Ej: 70707070" type="tel" disabled={loading} />
+                <Input
+                  value={clinica.telefono}
+                  onChange={setC('telefono')}
+                  onBlur={handleBlurClinica('telefono')}
+                  placeholder="Ej: 70707070"
+                  type="tel"
+                  disabled={loading}
+                  maxLength={20}
+                />
+                {errors.telefono && <ErrorText>{errors.telefono}</ErrorText>}
               </FieldWrap>
 
               <FieldWrap delay="0.2s">
                 <Label>NIT</Label>
-                <Input value={clinica.nit} onChange={setC('nit')} placeholder="Opcional" disabled={loading} />
+                <Input
+                  value={clinica.nit}
+                  onChange={setC('nit')}
+                  onBlur={handleBlurClinica('nit')}
+                  placeholder="Opcional"
+                  disabled={loading}
+                  maxLength={30}
+                />
+                {errors.nit && <ErrorText>{errors.nit}</ErrorText>}
               </FieldWrap>
             </FieldRow>
 
             <FieldWrap delay="0.25s">
               <Label>Dirección</Label>
-              <Input value={clinica.direccion} onChange={setC('direccion')} placeholder="Ej: Av. América #123, Cochabamba" disabled={loading} />
+              <Input
+                value={clinica.direccion}
+                onChange={setC('direccion')}
+                onBlur={handleBlurClinica('direccion')}
+                placeholder="Ej: Av. América #123, Cochabamba"
+                disabled={loading}
+                maxLength={180}
+              />
+              {errors.direccion && <ErrorText>{errors.direccion}</ErrorText>}
             </FieldWrap>
 
             <FieldWrap delay="0.3s">
               <Label>Correo de la clínica (opcional)</Label>
-              <Input type="email" value={clinica.email} onChange={setC('email')} placeholder="clinica@correo.com" disabled={loading} />
+              <Input
+                type="email"
+                value={clinica.email}
+                onChange={setC('email')}
+                onBlur={handleBlurClinica('email')}
+                placeholder="clinica@correo.com"
+                disabled={loading}
+                maxLength={120}
+              />
+              {errors.email && <ErrorText>{errors.email}</ErrorText>}
             </FieldWrap>
           </FieldGrid>
 
@@ -137,17 +317,43 @@ export default function OnboardingClinica() {
           <FieldGrid>
             <FieldWrap delay="0.35s">
               <Label>Nombre *</Label>
-              <Input value={admin.nombre_admin} onChange={setA('nombre_admin')} placeholder="Ej: Lucio Montaño" disabled={loading} />
+              <Input
+                value={admin.nombre_admin}
+                onChange={setA('nombre_admin')}
+                onBlur={handleBlurAdmin('nombre_admin')}
+                placeholder="Ej: Lucio Montaño"
+                disabled={loading}
+                maxLength={100}
+              />
+              {errors.nombre_admin && <ErrorText>{errors.nombre_admin}</ErrorText>}
             </FieldWrap>
 
             <FieldWrap delay="0.4s">
               <Label>Correo *</Label>
-              <Input type="email" value={admin.email_admin} onChange={setA('email_admin')} placeholder="admin@correo.com" disabled={loading} />
+              <Input
+                type="email"
+                value={admin.email_admin}
+                onChange={setA('email_admin')}
+                onBlur={handleBlurAdmin('email_admin')}
+                placeholder="admin@correo.com"
+                disabled={loading}
+                maxLength={120}
+              />
+              {errors.email_admin && <ErrorText>{errors.email_admin}</ErrorText>}
             </FieldWrap>
 
             <FieldWrap delay="0.45s">
               <Label>Contraseña *</Label>
-              <Input type="password" value={admin.password} onChange={setA('password')} placeholder="Mínimo 8 caracteres" disabled={loading} />
+              <Input
+                type="password"
+                value={admin.password}
+                onChange={setA('password')}
+                onBlur={handleBlurAdmin('password')}
+                placeholder="Mínimo 8 caracteres"
+                disabled={loading}
+                maxLength={50}
+              />
+              {errors.password && <ErrorText>{errors.password}</ErrorText>}
             </FieldWrap>
           </FieldGrid>
 

@@ -1,4 +1,3 @@
-// src/pages/Productos.jsx
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
@@ -65,7 +64,6 @@ import {
   MovBy,
 } from '../styles/productosGridStyles';
 
-// ✅ Normaliza para que pinte aunque el backend devuelva otros nombres
 const normalizeProducto = (p) => {
   if (!p) return null;
 
@@ -97,18 +95,16 @@ const normalizeProducto = (p) => {
 export default function Productos() {
   const { hasPermission } = useAuth();
 
-  // puede gestionar si tiene permisos (admin bypass ya está en hasPermission)
   const canCreate = hasPermission('productos:create');
   const canUpdate = hasPermission('productos:update');
   const canDelete = hasPermission('productos:delete');
 
-  // Para simplificar tu UI actual (que usa isAdmin para todo):
   const isAdmin = canCreate || canUpdate || canDelete;
+
   const [productos, setProductos] = useState([]);
   const [busqueda, setBusqueda] = useState('');
   const [filtroCategoria, setFiltroCategoria] = useState('TODOS');
 
-  // form (solo admin)
   const [formData, setFormData] = useState({
     nombre: '',
     categoria: 'Collares',
@@ -118,11 +114,11 @@ export default function Productos() {
   });
 
   const [errors, setErrors] = useState({});
+  const [stockErrors, setStockErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [modoEdicion, setModoEdicion] = useState(false);
   const [idActual, setIdActual] = useState(null);
 
-  // modal stock
   const [stockModalOpen, setStockModalOpen] = useState(false);
   const [stockTarget, setStockTarget] = useState(null);
   const [stockForm, setStockForm] = useState({
@@ -131,7 +127,6 @@ export default function Productos() {
     observacion: '',
   });
 
-  // movimientos modal
   const [movModalOpen, setMovModalOpen] = useState(false);
   const [movTarget, setMovTarget] = useState(null);
   const [movimientos, setMovimientos] = useState([]);
@@ -142,9 +137,9 @@ export default function Productos() {
 
       const raw =
         Array.isArray(res.data) ? res.data :
-          Array.isArray(res.data?.rows) ? res.data.rows :
-            Array.isArray(res.data?.data) ? res.data.data :
-              [];
+        Array.isArray(res.data?.rows) ? res.data.rows :
+        Array.isArray(res.data?.data) ? res.data.data :
+        [];
 
       const normalized = raw.map(normalizeProducto).filter(Boolean);
       setProductos(normalized);
@@ -155,7 +150,9 @@ export default function Productos() {
     }
   };
 
-  useEffect(() => { cargar(); }, []);
+  useEffect(() => {
+    cargar();
+  }, []);
 
   const categorias = useMemo(() => {
     const set = new Set();
@@ -165,24 +162,104 @@ export default function Productos() {
     return ['TODOS', ...arr];
   }, [productos]);
 
+  const validateField = (name, value, currentData = formData) => {
+    const val = String(value ?? '').trim();
+
+    switch (name) {
+      case 'nombre':
+        if (!val) return 'El nombre es obligatorio.';
+        if (val.length < 2) return 'Nombre mínimo 2 caracteres.';
+        if (val.length > 120) return 'Nombre demasiado largo.';
+        return null;
+
+      case 'categoria':
+        if (!val) return 'Categoría obligatoria.';
+        return null;
+
+      case 'tipo_producto':
+        if (!currentData.tipo_producto) return 'Tipo obligatorio.';
+        return null;
+
+      case 'stock_minimo': {
+        const min = Number(currentData.stock_minimo);
+        if (Number.isNaN(min) || min < 0) return 'Stock mínimo inválido.';
+        if (min > 999999) return 'Stock mínimo demasiado alto.';
+        return null;
+      }
+
+      case 'descripcion':
+        if (val.length > 1000) return 'Descripción demasiado larga.';
+        return null;
+
+      default:
+        return null;
+    }
+  };
+
   const validate = () => {
     const newErrors = {};
-    if (!formData.nombre?.trim() || formData.nombre.trim().length < 2) newErrors.nombre = 'Nombre mínimo 2 caracteres.';
-    if (!formData.categoria?.trim()) newErrors.categoria = 'Categoría obligatoria.';
-    if (!formData.tipo_producto) newErrors.tipo_producto = 'Tipo obligatorio.';
-    const min = Number(formData.stock_minimo);
-    if (Number.isNaN(min) || min < 0) newErrors.stock_minimo = 'Stock mínimo inválido.';
+    ['nombre', 'categoria', 'tipo_producto', 'stock_minimo', 'descripcion'].forEach((field) => {
+      const err = validateField(field, formData[field], formData);
+      if (err) newErrors[field] = err;
+    });
+    return newErrors;
+  };
+
+  const validateStock = () => {
+    const newErrors = {};
+    const qty = Number(stockForm.cantidad);
+    const obs = String(stockForm.observacion || '').trim();
+
+    if (!stockForm.tipo_movimiento) {
+      newErrors.tipo_movimiento = 'Debes seleccionar un tipo de movimiento.';
+    }
+
+    if (Number.isNaN(qty) || qty < 0) {
+      newErrors.cantidad = 'Cantidad inválida.';
+    }
+
+    if (stockForm.tipo_movimiento !== 'AJUSTE' && qty === 0) {
+      newErrors.cantidad = 'La cantidad debe ser mayor a 0.';
+    }
+
+    if (obs.length > 400) {
+      newErrors.observacion = 'La observación es demasiado larga.';
+    }
+
     return newErrors;
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((p) => ({ ...p, [name]: value }));
-    if (errors[name]) setErrors((p) => ({ ...p, [name]: null }));
+
+    let cleanedValue = value;
+    if (name === 'stock_minimo') {
+      cleanedValue = value.replace(/[^0-9]/g, '');
+    }
+
+    setFormData((p) => ({ ...p, [name]: cleanedValue }));
+
+    if (errors[name]) {
+      setErrors((p) => ({
+        ...p,
+        [name]: validateField(name, cleanedValue, { ...formData, [name]: cleanedValue }),
+      }));
+    }
+  };
+
+  const handleBlur = (e) => {
+    const { name, value } = e.target;
+    setErrors((p) => ({ ...p, [name]: validateField(name, value, formData) }));
   };
 
   const limpiarFormulario = () => {
-    setFormData({ nombre: '', categoria: 'Collares', descripcion: '', stock_minimo: 0, tipo_producto: 'NORMAL' });
+    setFormData({
+      nombre: '',
+      categoria: 'Collares',
+      descripcion: '',
+      stock_minimo: 0,
+      tipo_producto: 'NORMAL',
+    });
     setErrors({});
     setModoEdicion(false);
     setIdActual(null);
@@ -193,14 +270,17 @@ export default function Productos() {
     if (!isAdmin) return;
 
     const v = validate();
-    if (Object.keys(v).length) { setErrors(v); return; }
+    if (Object.keys(v).length) {
+      setErrors(v);
+      return;
+    }
 
     setSaving(true);
     try {
       const payload = {
-        nombre: formData.nombre,
-        categoria: formData.categoria,
-        descripcion: formData.descripcion,
+        nombre: formData.nombre.trim(),
+        categoria: formData.categoria.trim(),
+        descripcion: formData.descripcion.trim(),
         stock_minimo: Number(formData.stock_minimo),
         tipo_producto: formData.tipo_producto,
       };
@@ -235,6 +315,7 @@ export default function Productos() {
       tipo_producto: p.tipo_producto ?? 'NORMAL',
     });
     setErrors({});
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleDesactivar = async (id) => {
@@ -255,25 +336,32 @@ export default function Productos() {
     if (!isAdmin) return;
     setStockTarget(p);
     setStockForm({ tipo_movimiento: 'ENTRADA', cantidad: 0, observacion: '' });
+    setStockErrors({});
     setStockModalOpen(true);
   };
 
   const guardarStock = async () => {
     if (!isAdmin || !stockTarget) return;
 
+    const v = validateStock();
+    if (Object.keys(v).length) {
+      setStockErrors(v);
+      return;
+    }
+
     const qty = Number(stockForm.cantidad);
-    if (Number.isNaN(qty) || qty < 0) return alert('Cantidad inválida.');
 
     try {
       await moverStockProducto({
         producto_id: stockTarget.id,
         tipo_movimiento: stockForm.tipo_movimiento,
         cantidad: qty,
-        observacion: stockForm.observacion,
+        observacion: stockForm.observacion.trim(),
       });
 
       alert('Stock actualizado.');
       setStockModalOpen(false);
+      setStockErrors({});
       await cargar();
     } catch (err) {
       console.error(err);
@@ -286,8 +374,8 @@ export default function Productos() {
       const res = await obtenerMovimientosProducto(p.id);
       const raw =
         Array.isArray(res.data) ? res.data :
-          Array.isArray(res.data?.rows) ? res.data.rows :
-            [];
+        Array.isArray(res.data?.rows) ? res.data.rows :
+        [];
       setMovimientos(raw);
       setMovTarget(p);
       setMovModalOpen(true);
@@ -297,7 +385,6 @@ export default function Productos() {
     }
   };
 
-  // ✅ filtro + búsqueda + orden “Collares arriba”
   const productosFiltrados = useMemo(() => {
     const q = (busqueda || '').toLowerCase().trim();
 
@@ -314,10 +401,6 @@ export default function Productos() {
       return n.includes(q) || c.includes(q) || t.includes(q);
     });
 
-    // ⭐ Orden:
-    // 1) categoría "Collares" arriba
-    // 2) dentro de "Collares", tipo_producto "COLLAR" arriba
-    // 3) luego alfabético por nombre
     list.sort((a, b) => {
       const aIsCollares = (a.categoria || '').toLowerCase() === 'collares';
       const bIsCollares = (b.categoria || '').toLowerCase() === 'collares';
@@ -337,6 +420,7 @@ export default function Productos() {
     () => productosFiltrados.filter((p) => (p.categoria || '').toLowerCase() === 'collares'),
     [productosFiltrados]
   );
+
   const otrosList = useMemo(
     () => productosFiltrados.filter((p) => (p.categoria || '').toLowerCase() !== 'collares'),
     [productosFiltrados]
@@ -375,7 +459,6 @@ export default function Productos() {
       </TopBar>
 
       <LayoutGrid>
-        {/* LEFT */}
         <LeftPanel>
           <PanelHeader>
             <PanelTitle>
@@ -406,13 +489,21 @@ export default function Productos() {
                     placeholder="Nombre del producto"
                     value={formData.nombre}
                     onChange={handleChange}
+                    onBlur={handleBlur}
                     disabled={saving}
+                    maxLength={120}
                   />
                   <ErrorText>{errors.nombre || ''}</ErrorText>
                 </Field>
 
                 <Field>
-                  <Select name="categoria" value={formData.categoria} onChange={handleChange} disabled={saving}>
+                  <Select
+                    name="categoria"
+                    value={formData.categoria}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    disabled={saving}
+                  >
                     <option value="Collares">Categoría: Collares</option>
                     <option value="Medicamentos">Medicamentos</option>
                     <option value="Aseo">Aseo</option>
@@ -425,7 +516,13 @@ export default function Productos() {
                 </Field>
 
                 <Field>
-                  <Select name="tipo_producto" value={formData.tipo_producto} onChange={handleChange} disabled={saving}>
+                  <Select
+                    name="tipo_producto"
+                    value={formData.tipo_producto}
+                    onChange={handleChange}
+                    onBlur={handleBlur}
+                    disabled={saving}
+                  >
                     <option value="NORMAL">Tipo: NORMAL</option>
                     <option value="COLLAR">COLLAR</option>
                   </Select>
@@ -435,11 +532,14 @@ export default function Productos() {
                 <Field>
                   <Input
                     name="stock_minimo"
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     placeholder="Stock mínimo"
                     value={formData.stock_minimo}
                     onChange={handleChange}
+                    onBlur={handleBlur}
                     disabled={saving}
+                    maxLength={6}
                   />
                   <ErrorText>{errors.stock_minimo || ''}</ErrorText>
                 </Field>
@@ -450,21 +550,22 @@ export default function Productos() {
                     placeholder="Descripción (opcional)"
                     value={formData.descripcion}
                     onChange={handleChange}
+                    onBlur={handleBlur}
                     disabled={saving}
+                    maxLength={1000}
                   />
+                  <ErrorText>{errors.descripcion || ''}</ErrorText>
                 </Field>
               </form>
             ) : (
               <Hint>
-                Puedes ver el inventario y movimientos, pero <b>no</b> puedes crear/editar ni mover stock.
+                Puedes ver el inventario y movimientos, pero <b>no</b> puedes crear, editar ni mover stock.
               </Hint>
             )}
           </PanelBody>
         </LeftPanel>
 
-        {/* RIGHT */}
         <RightPanel>
-          {/* Collares */}
           <Section>
             <SectionHead>
               <SectionName>Collares</SectionName>
@@ -513,7 +614,6 @@ export default function Productos() {
             </CardsGrid>
           </Section>
 
-          {/* Otros */}
           <Section>
             <SectionHead>
               <SectionName>Otros productos</SectionName>
@@ -565,7 +665,6 @@ export default function Productos() {
         </RightPanel>
       </LayoutGrid>
 
-      {/* MODAL STOCK (admin) */}
       {stockModalOpen && stockTarget && (
         <Overlay onMouseDown={() => setStockModalOpen(false)}>
           <Modal onMouseDown={(e) => e.stopPropagation()}>
@@ -578,29 +677,50 @@ export default function Productos() {
               <Field>
                 <Select
                   value={stockForm.tipo_movimiento}
-                  onChange={(e) => setStockForm((p) => ({ ...p, tipo_movimiento: e.target.value }))}
+                  onChange={(e) => {
+                    setStockForm((p) => ({ ...p, tipo_movimiento: e.target.value }));
+                    if (stockErrors.tipo_movimiento) {
+                      setStockErrors((p) => ({ ...p, tipo_movimiento: null }));
+                    }
+                  }}
                 >
                   <option value="ENTRADA">Tipo: ENTRADA</option>
                   <option value="SALIDA">SALIDA</option>
                   <option value="AJUSTE">AJUSTE</option>
                 </Select>
+                <ErrorText>{stockErrors.tipo_movimiento || ''}</ErrorText>
               </Field>
 
               <Field>
                 <Input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   placeholder="Cantidad"
                   value={stockForm.cantidad}
-                  onChange={(e) => setStockForm((p) => ({ ...p, cantidad: e.target.value }))}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9]/g, '');
+                    setStockForm((p) => ({ ...p, cantidad: val }));
+                    if (stockErrors.cantidad) {
+                      setStockErrors((p) => ({ ...p, cantidad: null }));
+                    }
+                  }}
                 />
+                <ErrorText>{stockErrors.cantidad || ''}</ErrorText>
               </Field>
 
               <Field>
                 <TextArea
                   placeholder="Observación (opcional)"
                   value={stockForm.observacion}
-                  onChange={(e) => setStockForm((p) => ({ ...p, observacion: e.target.value }))}
+                  onChange={(e) => {
+                    setStockForm((p) => ({ ...p, observacion: e.target.value }));
+                    if (stockErrors.observacion) {
+                      setStockErrors((p) => ({ ...p, observacion: null }));
+                    }
+                  }}
+                  maxLength={400}
                 />
+                <ErrorText>{stockErrors.observacion || ''}</ErrorText>
               </Field>
 
               <Hint>
@@ -616,7 +736,6 @@ export default function Productos() {
         </Overlay>
       )}
 
-      {/* MODAL MOVIMIENTOS */}
       {movModalOpen && movTarget && (
         <Overlay onMouseDown={() => setMovModalOpen(false)}>
           <Modal onMouseDown={(e) => e.stopPropagation()}>

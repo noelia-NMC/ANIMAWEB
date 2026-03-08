@@ -1,4 +1,3 @@
-// src/pages/Veterinarios.js
 import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 
@@ -18,6 +17,9 @@ import {
   CardInfo, InfoGrid, InfoRow, Label, Value, ButtonGroup, EditButton,
   DeleteButton, EmptyState, ErrorMessage
 } from '../styles/crudStyles';
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_REGEX = /^[0-9+\-\s()]{7,20}$/;
 
 export default function Veterinarios() {
   const { hasPermission } = useAuth();
@@ -47,15 +49,13 @@ export default function Veterinarios() {
 
   const cargarRoles = useCallback(async () => {
     try {
-      // OJO: esto pega a GET /roles (requiere roles:read)
-      // Si tu veterinario no tiene roles:read, dale ese permiso o te hago un endpoint “roles/select”.
       const res = await getAllRoles();
       const list = (res.data || [])
         .filter((r) => String(r.nombre).toLowerCase() !== 'dueño' && String(r.nombre).toLowerCase() !== 'dueno')
         .map((r) => ({ id: r.id, nombre: r.nombre }));
+
       setRoles(list);
 
-      // set default rol si no hay
       setFormData((p) => ({
         ...p,
         rol_id: p.rol_id || (list[0]?.id ? String(list[0].id) : ''),
@@ -81,27 +81,87 @@ export default function Veterinarios() {
     cargarUsuarios();
   }, [cargarRoles, cargarUsuarios]);
 
+  const validateField = (name, value, currentData = formData) => {
+    const val = String(value ?? '').trim();
+
+    switch (name) {
+      case 'nombre':
+        if (!val) return 'El nombre es obligatorio.';
+        if (val.length < 3) return 'Mínimo 3 caracteres.';
+        if (val.length > 80) return 'Nombre demasiado largo.';
+        return null;
+
+      case 'apellido':
+        if (!val) return null;
+        if (val.length < 2) return 'Apellido muy corto.';
+        if (val.length > 80) return 'Apellido demasiado largo.';
+        return null;
+
+      case 'especialidad':
+        if (!val) return null;
+        if (val.length < 3) return 'Especialidad muy corta.';
+        if (val.length > 100) return 'Especialidad demasiado larga.';
+        return null;
+
+      case 'telefono':
+        if (!val) return null;
+        if (!PHONE_REGEX.test(val)) return 'Formato de teléfono inválido.';
+        return null;
+
+      case 'email':
+        if (!val) return 'El correo es obligatorio.';
+        if (!EMAIL_REGEX.test(val)) return 'El formato del correo es inválido.';
+        return null;
+
+      case 'password':
+        if (!modoEdicion && !currentData.password) return 'La contraseña es obligatoria.';
+        if (currentData.password && currentData.password.length < 8) return 'La contraseña debe tener al menos 8 caracteres.';
+        if (currentData.password && currentData.password.length > 50) return 'La contraseña es demasiado larga.';
+        return null;
+
+      case 'rol_id':
+        if (!currentData.rol_id) return 'Debe seleccionar un rol.';
+        return null;
+
+      default:
+        return null;
+    }
+  };
+
   const validate = () => {
     const newErrors = {};
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const phoneRegex = /^\d{7,15}$/;
-
-    if (!formData.nombre.trim() || formData.nombre.trim().length < 3) newErrors.nombre = 'El nombre es obligatorio (mín. 3 caracteres).';
-    if (formData.telefono.trim() && !phoneRegex.test(formData.telefono.trim())) newErrors.telefono = 'Formato de teléfono inválido.';
-    if (!formData.email.trim()) newErrors.email = 'El correo es obligatorio.';
-    else if (!emailRegex.test(formData.email.trim())) newErrors.email = 'El formato del correo es inválido.';
-
-    if (!modoEdicion && (!formData.password || formData.password.length < 8)) newErrors.password = 'La contraseña es obligatoria (mín. 8 caracteres).';
-    if (modoEdicion && formData.password && formData.password.length < 8) newErrors.password = 'La nueva contraseña debe tener al menos 8 caracteres.';
-
-    if (!formData.rol_id) newErrors.rol_id = 'Debe seleccionar un rol.';
+    ['nombre', 'apellido', 'especialidad', 'telefono', 'email', 'password', 'rol_id'].forEach((field) => {
+      const err = validateField(field, formData[field], formData);
+      if (err) newErrors[field] = err;
+    });
     return newErrors;
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-    if (errors[name]) setErrors(prev => ({ ...prev, [name]: null }));
+
+    let cleanedValue = value;
+
+    if (name === 'telefono') {
+      cleanedValue = value.replace(/[^0-9+\-\s()]/g, '');
+    }
+
+    setFormData(prev => ({ ...prev, [name]: cleanedValue }));
+
+    if (errors[name]) {
+      setErrors(prev => ({
+        ...prev,
+        [name]: validateField(name, cleanedValue, { ...formData, [name]: cleanedValue })
+      }));
+    }
+  };
+
+  const handleBlur = (e) => {
+    const { name, value } = e.target;
+    setErrors(prev => ({
+      ...prev,
+      [name]: validateField(name, value, formData)
+    }));
   };
 
   const cancelarEdicion = () => {
@@ -126,14 +186,17 @@ export default function Veterinarios() {
     if (!modoEdicion && !canCreate) return;
 
     const validationErrors = validate();
-    if (Object.keys(validationErrors).length > 0) { setErrors(validationErrors); return; }
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
 
     const dataToSend = {
-      nombre: formData.nombre,
-      apellido: formData.apellido,
-      especialidad: formData.especialidad,
-      telefono: formData.telefono,
-      email: formData.email,
+      nombre: formData.nombre.trim(),
+      apellido: formData.apellido.trim(),
+      especialidad: formData.especialidad.trim(),
+      telefono: formData.telefono.trim(),
+      email: formData.email.trim().toLowerCase(),
       rol_id: Number(formData.rol_id),
       ...(formData.password ? { password: formData.password } : {}),
     };
@@ -146,6 +209,7 @@ export default function Veterinarios() {
         await registrarVeterinario(dataToSend);
         alert('Usuario registrado correctamente.');
       }
+
       cancelarEdicion();
       cargarUsuarios();
     } catch (err) {
@@ -184,6 +248,7 @@ export default function Veterinarios() {
     });
 
     setErrors({});
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const usuariosFiltrados = usuarios.filter(u => {
@@ -214,27 +279,64 @@ export default function Veterinarios() {
 
         <FormGrid onSubmit={handleSubmit} noValidate>
           <FormGroup>
-            <Input name="nombre" placeholder="Nombre" value={formData.nombre} onChange={handleChange} />
+            <Input
+              name="nombre"
+              placeholder="Nombre"
+              value={formData.nombre}
+              onChange={handleChange}
+              onBlur={handleBlur}
+              maxLength={80}
+            />
             <ErrorMessage>{errors.nombre}</ErrorMessage>
           </FormGroup>
 
           <FormGroup>
-            <Input name="apellido" placeholder="Apellido (opcional)" value={formData.apellido} onChange={handleChange} />
+            <Input
+              name="apellido"
+              placeholder="Apellido (opcional)"
+              value={formData.apellido}
+              onChange={handleChange}
+              onBlur={handleBlur}
+              maxLength={80}
+            />
             <ErrorMessage>{errors.apellido}</ErrorMessage>
           </FormGroup>
 
           <FormGroup>
-            <Input name="especialidad" placeholder="Especialidad / Área (opcional)" value={formData.especialidad} onChange={handleChange} />
+            <Input
+              name="especialidad"
+              placeholder="Especialidad / Área (opcional)"
+              value={formData.especialidad}
+              onChange={handleChange}
+              onBlur={handleBlur}
+              maxLength={100}
+            />
             <ErrorMessage>{errors.especialidad}</ErrorMessage>
           </FormGroup>
 
           <FormGroup>
-            <Input name="telefono" type="tel" placeholder="Teléfono" value={formData.telefono} onChange={handleChange} />
+            <Input
+              name="telefono"
+              type="tel"
+              placeholder="Teléfono"
+              value={formData.telefono}
+              onChange={handleChange}
+              onBlur={handleBlur}
+              maxLength={20}
+            />
             <ErrorMessage>{errors.telefono}</ErrorMessage>
           </FormGroup>
 
           <FormGroup>
-            <Input name="email" type="email" placeholder="Correo electrónico" value={formData.email} onChange={handleChange} />
+            <Input
+              name="email"
+              type="email"
+              placeholder="Correo electrónico"
+              value={formData.email}
+              onChange={handleChange}
+              onBlur={handleBlur}
+              maxLength={120}
+            />
             <ErrorMessage>{errors.email}</ErrorMessage>
           </FormGroup>
 
@@ -245,12 +347,19 @@ export default function Veterinarios() {
               placeholder={modoEdicion ? 'Nueva contraseña (opcional)' : 'Contraseña'}
               value={formData.password}
               onChange={handleChange}
+              onBlur={handleBlur}
+              maxLength={50}
             />
             <ErrorMessage>{errors.password}</ErrorMessage>
           </FormGroup>
 
           <FormGroup>
-            <Select name="rol_id" value={formData.rol_id} onChange={handleChange}>
+            <Select
+              name="rol_id"
+              value={formData.rol_id}
+              onChange={handleChange}
+              onBlur={handleBlur}
+            >
               {roles.length ? (
                 roles.map((r) => (
                   <option key={r.id} value={String(r.id)}>

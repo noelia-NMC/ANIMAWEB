@@ -1,8 +1,3 @@
-// src/pages/Roles.jsx ✅ COMPLETO (MISMO rolesStyles.js, SIN CAMBIAR ESTILOS)
-// - Se puede editar permisos incluso en roles GLOBAL
-// - Solo se protege admin para no romper
-// - Buscador arriba usando Input existente (no se agrega CSS nuevo)
-
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import * as RoleService from '../services/rolesService';
 import { useAuth } from '../context/AuthContext';
@@ -37,10 +32,11 @@ import {
   CancelButton,
 } from '../styles/rolesStyles';
 
+const ROLE_NAME_REGEX = /^[a-z0-9_-]+$/;
+
 export default function Roles() {
   const { user } = useAuth();
 
-  // Hooks
   const [roles, setRoles] = useState([]);
   const [allPermisos, setAllPermisos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +45,7 @@ export default function Roles() {
   const [modalOpen, setModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [currentRol, setCurrentRol] = useState({ id: null, nombre: '', descripcion: '' });
+  const [formErrors, setFormErrors] = useState({});
 
   const [search, setSearch] = useState('');
 
@@ -82,7 +79,6 @@ export default function Roles() {
     else setLoading(false);
   }, [fetchData, user]);
 
-  // Agrupar permisos por módulo (dashboard, turnos, etc)
   const groupedPermisos = useMemo(() => {
     return (allPermisos || []).reduce((acc, permiso) => {
       const group = (permiso.nombre || 'otros').split(':')[0];
@@ -92,7 +88,6 @@ export default function Roles() {
     }, {});
   }, [allPermisos]);
 
-  // Buscar roles
   const filteredRoles = useMemo(() => {
     const q = (search || '').trim().toLowerCase();
     if (!q) return roles;
@@ -104,7 +99,6 @@ export default function Roles() {
     });
   }, [roles, search]);
 
-  // Early returns (después de hooks)
   if (!user) {
     return (
       <ErrorState>
@@ -126,12 +120,36 @@ export default function Roles() {
   if (loading) return <LoadingState><h2>Cargando...</h2></LoadingState>;
   if (error) return <ErrorState><h2>{error}</h2></ErrorState>;
 
-  // Helpers UI
   const actionOrder = ['create', 'read', 'update', 'delete', 'admin'];
   const isAdminRole = (rol) => String(rol?.nombre || '').toLowerCase() === 'admin';
   const isGlobalRole = (rol) => rol?.clinica_id === null || rol?.clinica_id === undefined;
 
-  // Handlers
+  const validateRole = () => {
+    const newErrors = {};
+    const nombre = String(currentRol.nombre || '').trim().toLowerCase();
+    const descripcion = String(currentRol.descripcion || '').trim();
+
+    if (!nombre) {
+      newErrors.nombre = 'El nombre del rol es obligatorio.';
+    } else if (nombre.length < 3) {
+      newErrors.nombre = 'Debe tener al menos 3 caracteres.';
+    } else if (nombre.length > 40) {
+      newErrors.nombre = 'El nombre es demasiado largo.';
+    } else if (!ROLE_NAME_REGEX.test(nombre)) {
+      newErrors.nombre = 'Solo se permiten letras minúsculas, números, guion y guion bajo.';
+    }
+
+    if (!descripcion) {
+      newErrors.descripcion = 'La descripción es obligatoria.';
+    } else if (descripcion.length < 5) {
+      newErrors.descripcion = 'Debe tener al menos 5 caracteres.';
+    } else if (descripcion.length > 300) {
+      newErrors.descripcion = 'La descripción es demasiado larga.';
+    }
+
+    return newErrors;
+  };
+
   const handleOpenModal = (rol = null) => {
     if (rol) {
       setIsEditing(true);
@@ -144,23 +162,27 @@ export default function Roles() {
       setIsEditing(false);
       setCurrentRol({ id: null, nombre: '', descripcion: '' });
     }
+    setFormErrors({});
     setModalOpen(true);
   };
 
-  const handleCloseModal = () => setModalOpen(false);
+  const handleCloseModal = () => {
+    setModalOpen(false);
+    setFormErrors({});
+  };
 
   const handleModalSave = async () => {
     try {
-      const nombre = (currentRol.nombre || '').trim().toLowerCase();
-      const descripcion = (currentRol.descripcion || '').trim();
-
-      if (!nombre || !descripcion) {
-        alert('El nombre y la descripción son obligatorios.');
+      const validationErrors = validateRole();
+      if (Object.keys(validationErrors).length > 0) {
+        setFormErrors(validationErrors);
         return;
       }
 
+      const nombre = (currentRol.nombre || '').trim().toLowerCase();
+      const descripcion = (currentRol.descripcion || '').trim();
+
       if (isEditing) {
-        // solo update descripcion (nombre bloqueado)
         await RoleService.updateRol(currentRol.id, { descripcion });
         alert('Rol actualizado correctamente.');
       } else {
@@ -208,8 +230,6 @@ export default function Roles() {
     try {
       const permisosIds = Array.from(rol.permisos);
 
-      // ✅ IMPORTANTE: ahora SIEMPRE se puede editar permisos (global o clínica)
-      // Solo bloqueamos admin
       if (isAdminRole(rol)) {
         alert('El rol admin no se edita aquí.');
         return;
@@ -223,14 +243,12 @@ export default function Roles() {
     }
   };
 
-  // Render
   return (
     <PageContainer>
       <HeaderRow>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <PageTitle>Gestión de roles y permisos</PageTitle>
 
-          {/* ✅ Sin estilos nuevos: usamos Input existente */}
           <Input
             type="text"
             placeholder="Buscar rol (nombre o descripción)..."
@@ -255,7 +273,6 @@ export default function Roles() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                     <RolTitle style={{ marginBottom: 0 }}>{rol.nombre}</RolTitle>
 
-                    {/* ✅ Etiqueta simple sin tocar estilos */}
                     <span
                       style={{
                         fontSize: 12,
@@ -272,7 +289,6 @@ export default function Roles() {
                       {global ? 'GLOBAL' : 'CLÍNICA'}
                     </span>
 
-                    {/* contador simple */}
                     <span style={{ fontSize: 12, color: '#7f8c8d' }}>
                       ({rol?.permisos?.size ?? 0} permisos)
                     </span>
@@ -355,19 +371,38 @@ export default function Roles() {
               type="text"
               placeholder="Nombre del rol (ej: inventario)"
               value={currentRol.nombre}
-              onChange={(e) =>
-                setCurrentRol((prev) => ({ ...prev, nombre: e.target.value.toLowerCase() }))
-              }
+              onChange={(e) => {
+                const value = e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+                setCurrentRol((prev) => ({ ...prev, nombre: value }));
+                if (formErrors.nombre) {
+                  setFormErrors((prev) => ({ ...prev, nombre: null }));
+                }
+              }}
               disabled={isEditing}
+              maxLength={40}
             />
+            {formErrors.nombre ? (
+              <div style={{ color: '#e74c3c', fontSize: 13, marginTop: -8, marginBottom: 8 }}>
+                {formErrors.nombre}
+              </div>
+            ) : null}
 
             <TextArea
               placeholder="Descripción del rol"
               value={currentRol.descripcion}
-              onChange={(e) =>
-                setCurrentRol((prev) => ({ ...prev, descripcion: e.target.value }))
-              }
+              onChange={(e) => {
+                setCurrentRol((prev) => ({ ...prev, descripcion: e.target.value }));
+                if (formErrors.descripcion) {
+                  setFormErrors((prev) => ({ ...prev, descripcion: null }));
+                }
+              }}
+              maxLength={300}
             />
+            {formErrors.descripcion ? (
+              <div style={{ color: '#e74c3c', fontSize: 13, marginTop: -8, marginBottom: 8 }}>
+                {formErrors.descripcion}
+              </div>
+            ) : null}
 
             <ModalActions>
               <CancelButton onClick={handleCloseModal}>Cancelar</CancelButton>

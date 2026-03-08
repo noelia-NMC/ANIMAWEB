@@ -36,7 +36,6 @@ import {
   LoadingCard,
 } from '../styles/reportesDashboard.styles';
 
-/* ─── helpers ────────────────────────────────────────────── */
 function fmtDate(fecha) {
   if (!fecha) return 's/f';
   try { return new Date(fecha).toLocaleDateString('es-ES'); }
@@ -44,49 +43,70 @@ function fmtDate(fecha) {
 }
 
 const DEFAULT_INCLUDE = {
-  resumen:    true,
-  turnos:     true,
+  resumen: true,
+  turnos: true,
   inventario: true,
-  tele:       true,
-  lab:        true,
-  diag:       true,
-  vets:       false,
+  tele: true,
+  lab: true,
+  diag: true,
+  vets: false,
 };
 
-/* ─── component ──────────────────────────────────────────── */
 export default function ReportesDashboard({ isOpen, onClose }) {
   const { user } = useAuth();
   const isAdmin = String(user?.rol || '').toLowerCase() === 'admin';
 
-  const [loading,   setLoading]   = useState(false);
+  const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState({ pdf: false, excel: false });
-  const [error,     setError]     = useState('');
+  const [error, setError] = useState('');
 
   const [fechaInicio, setFechaInicio] = useState('');
-  const [fechaFin,    setFechaFin]    = useState('');
-  const [bundle,      setBundle]      = useState(null);
+  const [fechaFin, setFechaFin] = useState('');
+  const [bundle, setBundle] = useState(null);
 
   const [qStock, setQStock] = useState('');
-  const [qLab,   setQLab]   = useState('');
+  const [qLab, setQLab] = useState('');
 
   const [include, setInclude] = useState(DEFAULT_INCLUDE);
 
-  /* lock scroll when open */
   useEffect(() => {
     document.body.style.overflow = isOpen ? 'hidden' : 'auto';
     return () => { document.body.style.overflow = 'auto'; };
   }, [isOpen]);
 
-  /* default date range: last 30 days */
   useEffect(() => {
-    const hoy    = new Date();
+    const hoy = new Date();
     const hace30 = new Date(hoy.getTime() - 30 * 24 * 60 * 60 * 1000);
     setFechaFin(hoy.toISOString().slice(0, 10));
     setFechaInicio(hace30.toISOString().slice(0, 10));
   }, []);
 
+  const validateDates = () => {
+    if (!fechaInicio || !fechaFin) {
+      return 'Debes seleccionar fecha inicio y fecha fin.';
+    }
+
+    const ini = new Date(`${fechaInicio}T00:00:00`);
+    const fin = new Date(`${fechaFin}T00:00:00`);
+
+    if (Number.isNaN(ini.getTime()) || Number.isNaN(fin.getTime())) {
+      return 'Rango de fechas inválido.';
+    }
+
+    if (ini > fin) {
+      return 'La fecha inicio no puede ser mayor que la fecha fin.';
+    }
+
+    return '';
+  };
+
   const cargar = async () => {
-    if (!fechaInicio || !fechaFin) return;
+    const dateError = validateDates();
+    if (dateError) {
+      setError(dateError);
+      return;
+    }
+
     setLoading(true);
     setError('');
     try {
@@ -105,22 +125,20 @@ export default function ReportesDashboard({ isOpen, onClose }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, fechaInicio, fechaFin]);
 
-  /* data aliases */
-  const dashboard            = bundle?.base?.dashboard          || {};
-  const mascotasConsultadas  = bundle?.base?.mascotasConsultadas || [];
-  const tiposConsultas       = bundle?.base?.tiposConsultas      || [];
-  const razasAtendidas       = bundle?.base?.razasAtendidas      || [];
-  const turnosPorPeriodo     = bundle?.turnosPorPeriodo          || [];
-  const actividadVeterinarios = bundle?.actividadVeterinarios    || [];
-  const stockBajo            = bundle?.stockBajo                 || [];
-  const movsStockResumen     = bundle?.movsStockResumen          || [];
-  const topConsumidos        = bundle?.topConsumidos             || [];
-  const teleconsultaEstados  = bundle?.teleconsultaEstados       || [];
-  const labPorTipo           = bundle?.labPorTipo                || [];
-  const labRecientes         = bundle?.labRecientes              || [];
-  const diagnosticosTop      = bundle?.diagnosticosTop           || [];
+  const dashboard = bundle?.base?.dashboard || {};
+  const mascotasConsultadas = bundle?.base?.mascotasConsultadas || [];
+  const tiposConsultas = bundle?.base?.tiposConsultas || [];
+  const razasAtendidas = bundle?.base?.razasAtendidas || [];
+  const turnosPorPeriodo = bundle?.turnosPorPeriodo || [];
+  const actividadVeterinarios = bundle?.actividadVeterinarios || [];
+  const stockBajo = bundle?.stockBajo || [];
+  const movsStockResumen = bundle?.movsStockResumen || [];
+  const topConsumidos = bundle?.topConsumidos || [];
+  const teleconsultaEstados = bundle?.teleconsultaEstados || [];
+  const labPorTipo = bundle?.labPorTipo || [];
+  const labRecientes = bundle?.labRecientes || [];
+  const diagnosticosTop = bundle?.diagnosticosTop || [];
 
-  /* filtered lists */
   const stockBajoFiltrado = useMemo(() => {
     const q = qStock.trim().toLowerCase();
     return q
@@ -151,16 +169,25 @@ export default function ReportesDashboard({ isOpen, onClose }) {
     });
 
   const handleExport = async (tipo) => {
+    const dateError = validateDates();
+    if (dateError) {
+      setError(dateError);
+      return;
+    }
+
     if (!isAdmin) {
       setError('No tienes permisos para exportar. Pide acceso al admin.');
       return;
     }
+
     if (!includeList.length) {
       setError('Selecciona al menos 1 sección para exportar.');
       return;
     }
+
     setExporting((p) => ({ ...p, [tipo]: true }));
     setError('');
+
     try {
       await reportesService.exportarReporte(tipo, { fechaInicio, fechaFin, include: includeList });
     } catch (e) {
@@ -175,8 +202,6 @@ export default function ReportesDashboard({ isOpen, onClose }) {
   return (
     <Overlay onClick={onClose}>
       <Modal onClick={(e) => e.stopPropagation()}>
-
-        {/* ── Header ── */}
         <Header>
           <Title>
             <h2>📊 Reportes</h2>
@@ -185,14 +210,12 @@ export default function ReportesDashboard({ isOpen, onClose }) {
         </Header>
 
         <Body>
-          {/* role notice */}
           {!isAdmin && (
             <Banner>
               👀 Estás como <b>veterinario</b>. Puedes ver reportes, pero exportar es solo para admins.
             </Banner>
           )}
 
-          {/* ── Top controls ── */}
           <StickyTop>
             <TopBar>
               <LeftControls>
@@ -201,7 +224,10 @@ export default function ReportesDashboard({ isOpen, onClose }) {
                   <input
                     type="date"
                     value={fechaInicio}
-                    onChange={(e) => setFechaInicio(e.target.value)}
+                    onChange={(e) => {
+                      setFechaInicio(e.target.value);
+                      if (error) setError('');
+                    }}
                   />
                 </Group>
 
@@ -210,7 +236,10 @@ export default function ReportesDashboard({ isOpen, onClose }) {
                   <input
                     type="date"
                     value={fechaFin}
-                    onChange={(e) => setFechaFin(e.target.value)}
+                    onChange={(e) => {
+                      setFechaFin(e.target.value);
+                      if (error) setError('');
+                    }}
                   />
                 </Group>
 
@@ -220,7 +249,6 @@ export default function ReportesDashboard({ isOpen, onClose }) {
               </LeftControls>
 
               <RightControls>
-                {/* section chips */}
                 <Chips>
                   <div className="chipsHead">
                     <span className="ttl">Secciones</span>
@@ -231,12 +259,12 @@ export default function ReportesDashboard({ isOpen, onClose }) {
                   </div>
 
                   <div className="chipsGrid">
-                    <Chip $on={include.resumen}    onClick={() => toggle('resumen')}>Resumen</Chip>
-                    <Chip $on={include.turnos}     onClick={() => toggle('turnos')}>Turnos</Chip>
+                    <Chip $on={include.resumen} onClick={() => toggle('resumen')}>Resumen</Chip>
+                    <Chip $on={include.turnos} onClick={() => toggle('turnos')}>Turnos</Chip>
                     <Chip $on={include.inventario} onClick={() => toggle('inventario')}>Inventario</Chip>
-                    <Chip $on={include.tele}       onClick={() => toggle('tele')}>Tele</Chip>
-                    <Chip $on={include.lab}        onClick={() => toggle('lab')}>Lab</Chip>
-                    <Chip $on={include.diag}       onClick={() => toggle('diag')}>Diagnósticos</Chip>
+                    <Chip $on={include.tele} onClick={() => toggle('tele')}>Tele</Chip>
+                    <Chip $on={include.lab} onClick={() => toggle('lab')}>Lab</Chip>
+                    <Chip $on={include.diag} onClick={() => toggle('diag')}>Diagnósticos</Chip>
                     <Chip
                       $on={include.vets}
                       $disabled={!isAdmin}
@@ -248,10 +276,9 @@ export default function ReportesDashboard({ isOpen, onClose }) {
                   </div>
                 </Chips>
 
-                {/* export */}
                 <ExportBtns>
-                  <Btn $v="ok"   onClick={() => handleExport('pdf')}   disabled={!isAdmin || exporting.pdf}>
-                    {exporting.pdf   ? '⏳ PDF…'   : '📄 PDF'}
+                  <Btn $v="ok" onClick={() => handleExport('pdf')} disabled={!isAdmin || exporting.pdf}>
+                    {exporting.pdf ? '⏳ PDF…' : '📄 PDF'}
                   </Btn>
                   <Btn $v="info" onClick={() => handleExport('excel')} disabled={!isAdmin || exporting.excel}>
                     {exporting.excel ? '⏳ Excel…' : '📊 Excel'}
@@ -261,21 +288,18 @@ export default function ReportesDashboard({ isOpen, onClose }) {
             </TopBar>
           </StickyTop>
 
-          {/* ── Feedback ── */}
-          {error   && <ErrorBox>{error}</ErrorBox>}
+          {error && <ErrorBox>{error}</ErrorBox>}
           {loading && <LoadingCard>Cargando reportes…</LoadingCard>}
 
-          {/* ── Data ── */}
           {!loading && bundle && (
             <>
-              {/* stat strip */}
               <Stats>
                 <Stat $c="primary">
-                  <div className="val">{dashboard.totalMascotas     || 0}</div>
+                  <div className="val">{dashboard.totalMascotas || 0}</div>
                   <div className="lab">Mascotas</div>
                 </Stat>
                 <Stat $c="ok">
-                  <div className="val">{dashboard.turnosEsteMes     || 0}</div>
+                  <div className="val">{dashboard.turnosEsteMes || 0}</div>
                   <div className="lab">Turnos este mes</div>
                 </Stat>
                 <Stat $c="info">
@@ -283,14 +307,12 @@ export default function ReportesDashboard({ isOpen, onClose }) {
                   <div className="lab">Veterinarios</div>
                 </Stat>
                 <Stat $c="accent">
-                  <div className="val">{dashboard.turnosPendientes   || 0}</div>
+                  <div className="val">{dashboard.turnosPendientes || 0}</div>
                   <div className="lab">Pendientes</div>
                 </Stat>
               </Stats>
 
               <SectionsGrid>
-
-                {/* ── Resumen ── */}
                 <Section open>
                   <summary>
                     <span>📌 Resumen</span>
@@ -306,11 +328,11 @@ export default function ReportesDashboard({ isOpen, onClose }) {
                         <List>
                           {mascotasConsultadas.length
                             ? mascotasConsultadas.map((m, i) => (
-                              <Item key={i}>
-                                <L>{m.mascota} ({m.raza})</L>
-                                <V>{m.total_consultas}×</V>
-                              </Item>
-                            ))
+                                <Item key={i}>
+                                  <L>{m.mascota} ({m.raza})</L>
+                                  <V>{m.total_consultas}×</V>
+                                </Item>
+                              ))
                             : <L>No hay datos</L>}
                         </List>
                       </MiniCard>
@@ -323,11 +345,11 @@ export default function ReportesDashboard({ isOpen, onClose }) {
                         <List>
                           {tiposConsultas.length
                             ? tiposConsultas.map((t, i) => (
-                              <Item key={i}>
-                                <L>{t.motivo}</L>
-                                <V>{t.cantidad} ({t.porcentaje || 0}%)</V>
-                              </Item>
-                            ))
+                                <Item key={i}>
+                                  <L>{t.motivo}</L>
+                                  <V>{t.cantidad} ({t.porcentaje || 0}%)</V>
+                                </Item>
+                              ))
                             : <L>No hay datos</L>}
                         </List>
                       </MiniCard>
@@ -340,11 +362,11 @@ export default function ReportesDashboard({ isOpen, onClose }) {
                         <List>
                           {razasAtendidas.length
                             ? razasAtendidas.map((r, i) => (
-                              <Item key={i}>
-                                <L>{r.raza}</L>
-                                <V>{r.total_consultas}</V>
-                              </Item>
-                            ))
+                                <Item key={i}>
+                                  <L>{r.raza}</L>
+                                  <V>{r.total_consultas}</V>
+                                </Item>
+                              ))
                             : <L>No hay datos</L>}
                         </List>
                       </MiniCard>
@@ -352,7 +374,6 @@ export default function ReportesDashboard({ isOpen, onClose }) {
                   </div>
                 </Section>
 
-                {/* ── Inventario ── */}
                 <Section>
                   <summary>
                     <span>📦 Inventario</span>
@@ -372,13 +393,13 @@ export default function ReportesDashboard({ isOpen, onClose }) {
                         <List>
                           {stockBajoFiltrado.length
                             ? stockBajoFiltrado.map((p, i) => (
-                              <Item key={i}>
-                                <L>{p.nombre}</L>
-                                <V style={{ color: p.stock_actual <= 0 ? '#dc2626' : undefined }}>
-                                  {p.stock_actual} / mín {p.stock_minimo}
-                                </V>
-                              </Item>
-                            ))
+                                <Item key={i}>
+                                  <L>{p.nombre}</L>
+                                  <V style={{ color: p.stock_actual <= 0 ? '#dc2626' : undefined }}>
+                                    {p.stock_actual} / mín {p.stock_minimo}
+                                  </V>
+                                </Item>
+                              ))
                             : <L>Todo ok ✅</L>}
                         </List>
                       </MiniCard>
@@ -391,11 +412,11 @@ export default function ReportesDashboard({ isOpen, onClose }) {
                         <List>
                           {movsStockResumen.length
                             ? movsStockResumen.map((m, i) => (
-                              <Item key={i}>
-                                <L>{m.tipo_movimiento}</L>
-                                <V>{m.cantidad_movs} mov / {m.total_unidades} uds</V>
-                              </Item>
-                            ))
+                                <Item key={i}>
+                                  <L>{m.tipo_movimiento}</L>
+                                  <V>{m.cantidad_movs} mov / {m.total_unidades} uds</V>
+                                </Item>
+                              ))
                             : <L>No hay movimientos</L>}
                         </List>
                       </MiniCard>
@@ -408,11 +429,11 @@ export default function ReportesDashboard({ isOpen, onClose }) {
                         <List>
                           {topConsumidos.length
                             ? topConsumidos.map((p, i) => (
-                              <Item key={i}>
-                                <L>{p.nombre}</L>
-                                <V>{p.total_salida} uds</V>
-                              </Item>
-                            ))
+                                <Item key={i}>
+                                  <L>{p.nombre}</L>
+                                  <V>{p.total_salida} uds</V>
+                                </Item>
+                              ))
                             : <L>No hay salidas</L>}
                         </List>
                       </MiniCard>
@@ -420,7 +441,6 @@ export default function ReportesDashboard({ isOpen, onClose }) {
                   </div>
                 </Section>
 
-                {/* ── Turnos ── */}
                 <Section>
                   <summary>
                     <span>📅 Turnos</span>
@@ -435,18 +455,17 @@ export default function ReportesDashboard({ isOpen, onClose }) {
                       <List>
                         {turnosPorPeriodo.length
                           ? turnosPorPeriodo.map((d, i) => (
-                            <Item key={i}>
-                              <L>{fmtDate(d.fecha)}</L>
-                              <V>{d.total_turnos}</V>
-                            </Item>
-                          ))
+                              <Item key={i}>
+                                <L>{fmtDate(d.fecha)}</L>
+                                <V>{d.total_turnos}</V>
+                              </Item>
+                            ))
                           : <L>No hay turnos</L>}
                       </List>
                     </MiniCard>
                   </div>
                 </Section>
 
-                {/* ── Teleconsultas ── */}
                 <Section>
                   <summary>
                     <span>💻 Teleconsultas</span>
@@ -461,18 +480,17 @@ export default function ReportesDashboard({ isOpen, onClose }) {
                       <List>
                         {teleconsultaEstados.length
                           ? teleconsultaEstados.map((t, i) => (
-                            <Item key={i}>
-                              <L>{t.estado}</L>
-                              <V>{t.cantidad}</V>
-                            </Item>
-                          ))
+                              <Item key={i}>
+                                <L>{t.estado}</L>
+                                <V>{t.cantidad}</V>
+                              </Item>
+                            ))
                           : <L>No hay teleconsultas</L>}
                       </List>
                     </MiniCard>
                   </div>
                 </Section>
 
-                {/* ── Laboratorio ── */}
                 <Section>
                   <summary>
                     <span>🧪 Laboratorio</span>
@@ -488,11 +506,11 @@ export default function ReportesDashboard({ isOpen, onClose }) {
                         <List>
                           {labPorTipo.length
                             ? labPorTipo.map((l, i) => (
-                              <Item key={i}>
-                                <L>{l.tipo_examen}</L>
-                                <V>{l.cantidad}</V>
-                              </Item>
-                            ))
+                                <Item key={i}>
+                                  <L>{l.tipo_examen}</L>
+                                  <V>{l.cantidad}</V>
+                                </Item>
+                              ))
                             : <L>No hay resultados</L>}
                         </List>
                       </MiniCard>
@@ -509,11 +527,11 @@ export default function ReportesDashboard({ isOpen, onClose }) {
                         <List>
                           {labRecientesFiltrado.length
                             ? labRecientesFiltrado.map((r, i) => (
-                              <Item key={i}>
-                                <L>{r.nombre_mascota} — {r.tipo_examen}</L>
-                                <V>{fmtDate(r.fecha)}</V>
-                              </Item>
-                            ))
+                                <Item key={i}>
+                                  <L>{r.nombre_mascota} — {r.tipo_examen}</L>
+                                  <V>{fmtDate(r.fecha)}</V>
+                                </Item>
+                              ))
                             : <L>No hay recientes</L>}
                         </List>
                       </MiniCard>
@@ -521,7 +539,6 @@ export default function ReportesDashboard({ isOpen, onClose }) {
                   </div>
                 </Section>
 
-                {/* ── Diagnósticos ── */}
                 <Section>
                   <summary>
                     <span>🩺 Diagnósticos</span>
@@ -536,18 +553,17 @@ export default function ReportesDashboard({ isOpen, onClose }) {
                       <List>
                         {diagnosticosTop.length
                           ? diagnosticosTop.map((d, i) => (
-                            <Item key={i}>
-                              <L>{d.diagnostico}</L>
-                              <V>{d.cantidad}</V>
-                            </Item>
-                          ))
+                              <Item key={i}>
+                                <L>{d.diagnostico}</L>
+                                <V>{d.cantidad}</V>
+                              </Item>
+                            ))
                           : <L>No hay diagnósticos</L>}
                       </List>
                     </MiniCard>
                   </div>
                 </Section>
 
-                {/* ── Veterinarios (admin only) ── */}
                 {isAdmin && (
                   <Section>
                     <summary>
@@ -563,18 +579,17 @@ export default function ReportesDashboard({ isOpen, onClose }) {
                         <List>
                           {actividadVeterinarios.length
                             ? actividadVeterinarios.map((v, i) => (
-                              <Item key={i}>
-                                <L>{v.veterinario} ({v.email})</L>
-                                <V>{v.total_consultas}</V>
-                              </Item>
-                            ))
+                                <Item key={i}>
+                                  <L>{v.veterinario} ({v.email})</L>
+                                  <V>{v.total_consultas}</V>
+                                </Item>
+                              ))
                             : <L>No hay data</L>}
                         </List>
                       </MiniCard>
                     </div>
                   </Section>
                 )}
-
               </SectionsGrid>
             </>
           )}

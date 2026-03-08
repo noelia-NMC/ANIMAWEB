@@ -20,24 +20,49 @@ import {
   TitleRow,
 } from '../styles/loginStyled';
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [errors, setErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
 
   const navigate = useNavigate();
   const { login: authLogin } = useAuth();
 
+  const validate = () => {
+    const newErrors = {};
+
+    if (!email.trim()) {
+      newErrors.email = 'El correo es obligatorio.';
+    } else if (!EMAIL_REGEX.test(email.trim())) {
+      newErrors.email = 'Correo inválido.';
+    }
+
+    if (!password.trim()) {
+      newErrors.password = 'La contraseña es obligatoria.';
+    } else if (password.trim().length < 6) {
+      newErrors.password = 'La contraseña debe tener al menos 6 caracteres.';
+    }
+
+    return newErrors;
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
+
+    const validationErrors = validate();
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors);
+      return;
+    }
+
     setIsLoading(true);
 
     try {
-      const res = await login(email, password);
-
-      // ✅ Guardar bien user/token
+      const res = await login(email.trim().toLowerCase(), password);
       authLogin(res.data.user, res.data.token);
-
       navigate('/dashboard');
     } catch (err) {
       alert(err.response?.data?.message || 'Error al iniciar sesión');
@@ -63,16 +88,26 @@ export default function Login() {
 
         <Subtitle>Inicia sesión para continuar</Subtitle>
 
-        <Form onSubmit={handleLogin}>
+        <Form onSubmit={handleLogin} noValidate>
           <InputContainer delay="0.2s">
             <Input
               type="email"
               placeholder="📧 Correo electrónico"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (errors.email) setErrors((prev) => ({ ...prev, email: null }));
+              }}
+              onBlur={() => {
+                if (!email.trim()) {
+                  setErrors((prev) => ({ ...prev, email: 'El correo es obligatorio.' }));
+                } else if (!EMAIL_REGEX.test(email.trim())) {
+                  setErrors((prev) => ({ ...prev, email: 'Correo inválido.' }));
+                }
+              }}
               disabled={isLoading}
             />
+            {errors.email && <p style={{ color: '#e74c3c', fontSize: '0.85rem', marginTop: 6 }}>{errors.email}</p>}
           </InputContainer>
 
           <InputContainer delay="0.4s">
@@ -80,10 +115,20 @@ export default function Login() {
               type="password"
               placeholder="🔒 Contraseña"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (errors.password) setErrors((prev) => ({ ...prev, password: null }));
+              }}
+              onBlur={() => {
+                if (!password.trim()) {
+                  setErrors((prev) => ({ ...prev, password: 'La contraseña es obligatoria.' }));
+                } else if (password.trim().length < 6) {
+                  setErrors((prev) => ({ ...prev, password: 'La contraseña debe tener al menos 6 caracteres.' }));
+                }
+              }}
               disabled={isLoading}
             />
+            {errors.password && <p style={{ color: '#e74c3c', fontSize: '0.85rem', marginTop: 6 }}>{errors.password}</p>}
           </InputContainer>
 
           <SubmitButton type="submit" disabled={isLoading}>

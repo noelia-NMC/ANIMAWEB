@@ -1,4 +1,4 @@
-// src/pages/Register.jsx
+// src/pages/Register.jsx                 no se utiliza
 import { useState } from 'react';
 import { register } from '../services/auth';
 import { useNavigate } from 'react-router-dom';

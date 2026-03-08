@@ -1,5 +1,3 @@
-// ARCHIVO COMPLETO Y PRO: src/pages/Mascotas.js
-
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import styled from 'styled-components';
 
@@ -35,9 +33,6 @@ import {
   EmptyState,
 } from '../styles/crudStyles';
 
-/* =========================================================
-   ✅ Estilos SOLO Mascotas (independientes)
-========================================================= */
 const colors = {
   primary: '#42a8a1',
   primaryDark: '#358a82',
@@ -52,17 +47,13 @@ const colors = {
 const FormCardLocal = styled.div`
   grid-row: 2;
   grid-column: 1;
-
   background: ${colors.white};
   border-radius: 12px;
   padding: 1.25rem;
-
   box-shadow: 0 4px 12px rgba(44, 62, 80, 0.05);
   border: 1px solid ${colors.border};
-
   display: flex;
   flex-direction: column;
-
   height: calc(100vh - 190px);
   min-height: 540px;
   overflow: hidden;
@@ -79,7 +70,6 @@ const HeaderRow = styled.div`
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-
   padding-bottom: 0.65rem;
   margin-bottom: 0.9rem;
   border-bottom: 1px solid ${colors.border};
@@ -138,11 +128,6 @@ const FormBodyScroll = styled.div`
   overflow-y: auto;
   padding-right: 6px;
   padding-bottom: 10px;
-
-  &::-webkit-scrollbar { width: 8px; }
-  &::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
-  &::-webkit-scrollbar-thumb { background: #ccc; border-radius: 10px; }
-  &::-webkit-scrollbar-thumb:hover { background: #aaa; }
 `;
 
 const Field = styled.div`
@@ -181,8 +166,6 @@ const Hint = styled.div`
   margin-top: 6px;
   line-height: 1.3;
 `;
-
-/* ========================================================= */
 
 export default function Mascotas() {
   const [mascotas, setMascotas] = useState([]);
@@ -230,43 +213,96 @@ export default function Mascotas() {
     return String(clienteSeleccionado?.tipo_cliente || '').toUpperCase() === 'FIJO';
   }, [clienteSeleccionado]);
 
-  // Si no es FIJO, limpiamos collar_id automáticamente
   useEffect(() => {
     if (!esClienteFijo && formData.collar_id) {
       setFormData((p) => ({ ...p, collar_id: '' }));
       setErrors((p) => ({ ...p, collar_id: null }));
     }
-  }, [esClienteFijo]); // eslint-disable-line
+  }, [esClienteFijo, formData.collar_id]);
+
+  const validateField = (name, value, currentData = formData) => {
+    const val = String(value ?? '').trim();
+    const edadNum = Number(currentData.edad);
+
+    switch (name) {
+      case 'nombre':
+        if (!val) return 'El nombre es obligatorio.';
+        if (val.length < 2) return 'Debe tener al menos 2 caracteres.';
+        if (val.length > 100) return 'El nombre es demasiado largo.';
+        return null;
+
+      case 'cliente_id':
+        if (!currentData.cliente_id) return 'Debe seleccionar un cliente.';
+        return null;
+
+      case 'especie':
+        if (!val) return 'La especie es obligatoria.';
+        if (val.length < 2) return 'La especie es demasiado corta.';
+        if (val.length > 60) return 'La especie es demasiado larga.';
+        return null;
+
+      case 'raza':
+        if (!val) return 'La raza es obligatoria.';
+        if (val.length < 2) return 'La raza es demasiado corta.';
+        if (val.length > 80) return 'La raza es demasiado larga.';
+        return null;
+
+      case 'edad':
+        if (!currentData.edad && currentData.edad !== 0) return 'La edad es obligatoria.';
+        if (Number.isNaN(edadNum) || edadNum <= 0) return 'La edad debe ser un número positivo.';
+        if (edadNum > 40) return 'La edad parece inválida.';
+        return null;
+
+      case 'genero':
+        if (!currentData.genero) return 'Debe seleccionar un género.';
+        return null;
+
+      case 'collar_id':
+        if (!esClienteFijo) return null;
+        if (!val) return null;
+        if (val.length < 5) return 'ID de collar muy corto.';
+        if (val.length > 50) return 'ID de collar demasiado largo.';
+        return null;
+
+      default:
+        return null;
+    }
+  };
 
   const validate = () => {
     const newErrors = {};
-    const nombre = (formData.nombre || '').trim();
-    const especie = (formData.especie || '').trim();
-    const raza = (formData.raza || '').trim();
-    const edadNum = Number(formData.edad);
-
-    if (!nombre || nombre.length < 2) newErrors.nombre = 'El nombre es obligatorio (mín. 2 caracteres).';
-    if (!formData.cliente_id) newErrors.cliente_id = 'Debe seleccionar un cliente.';
-    if (!especie) newErrors.especie = 'La especie es obligatoria.';
-    if (!raza) newErrors.raza = 'La raza es obligatoria.';
-    if (!formData.edad || Number.isNaN(edadNum) || edadNum <= 0) newErrors.edad = 'La edad debe ser un número positivo.';
-    if (!formData.genero) newErrors.genero = 'Debe seleccionar un género.';
-
-    // collar_id solo si FIJO
-    if (esClienteFijo) {
-      const collar = (formData.collar_id || '').trim();
-      if (collar && collar.length < 5) newErrors.collar_id = 'ID de collar muy corto.';
-      // Si quieres obligarlo cuando sea FIJO, descomenta:
-      // if (!collar) newErrors.collar_id = 'Si el cliente es FIJO, el collar es opcional, pero si lo tiene ingrésalo.';
-    }
-
+    ['nombre', 'cliente_id', 'especie', 'raza', 'edad', 'genero', 'collar_id'].forEach((field) => {
+      const error = validateField(field, formData[field], formData);
+      if (error) newErrors[field] = error;
+    });
     return newErrors;
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-    if (errors[name]) setErrors((prev) => ({ ...prev, [name]: null }));
+
+    let cleanedValue = value;
+
+    if (name === 'edad') {
+      cleanedValue = value.replace(/[^0-9]/g, '');
+    }
+
+    if (name === 'collar_id') {
+      cleanedValue = value.replace(/[^a-zA-Z0-9-]/g, '');
+    }
+
+    setFormData((prev) => ({ ...prev, [name]: cleanedValue }));
+
+    if (errors[name]) {
+      const error = validateField(name, cleanedValue, { ...formData, [name]: cleanedValue });
+      setErrors((prev) => ({ ...prev, [name]: error }));
+    }
+  };
+
+  const handleBlur = (e) => {
+    const { name, value } = e.target;
+    const error = validateField(name, value, formData);
+    setErrors((prev) => ({ ...prev, [name]: error }));
   };
 
   const limpiarFormulario = () => {
@@ -323,7 +359,6 @@ export default function Mascotas() {
         err.response?.data?.message ||
         'Error al guardar la mascota.';
 
-      // Si el backend responde 409 por collar duplicado
       if (err.response?.status === 409) {
         setErrors((p) => ({ ...p, collar_id: msg }));
       }
@@ -407,17 +442,19 @@ export default function Mascotas() {
                 placeholder="Nombre de la mascota"
                 value={formData.nombre}
                 onChange={handleChange}
+                onBlur={handleBlur}
                 disabled={saving}
+                maxLength={100}
               />
               <ErrorText>{errors.nombre}</ErrorText>
             </Field>
 
-            {/* ✅ SELECT CLIENTE */}
             <Field>
               <SelectLocal
                 name="cliente_id"
                 value={formData.cliente_id}
                 onChange={handleChange}
+                onBlur={handleBlur}
                 disabled={saving}
               >
                 <option value="">Seleccionar cliente</option>
@@ -436,7 +473,6 @@ export default function Mascotas() {
               ) : null}
             </Field>
 
-            {/* ✅ collar_id SOLO si FIJO */}
             {esClienteFijo && (
               <Field>
                 <InputLocal
@@ -444,7 +480,9 @@ export default function Mascotas() {
                   placeholder="ID del collar (ej: ANIMA-ABC123) (opcional)"
                   value={formData.collar_id}
                   onChange={handleChange}
+                  onBlur={handleBlur}
                   disabled={saving}
+                  maxLength={50}
                 />
                 <ErrorText>{errors.collar_id}</ErrorText>
               </Field>
@@ -456,7 +494,9 @@ export default function Mascotas() {
                 placeholder="Especie"
                 value={formData.especie}
                 onChange={handleChange}
+                onBlur={handleBlur}
                 disabled={saving}
+                maxLength={60}
               />
               <ErrorText>{errors.especie}</ErrorText>
             </Field>
@@ -467,7 +507,9 @@ export default function Mascotas() {
                 placeholder="Raza"
                 value={formData.raza}
                 onChange={handleChange}
+                onBlur={handleBlur}
                 disabled={saving}
+                maxLength={80}
               />
               <ErrorText>{errors.raza}</ErrorText>
             </Field>
@@ -475,17 +517,26 @@ export default function Mascotas() {
             <Field>
               <InputLocal
                 name="edad"
-                type="number"
+                type="text"
+                inputMode="numeric"
                 placeholder="Edad"
                 value={formData.edad}
                 onChange={handleChange}
+                onBlur={handleBlur}
                 disabled={saving}
+                maxLength={2}
               />
               <ErrorText>{errors.edad}</ErrorText>
             </Field>
 
             <Field>
-              <SelectLocal name="genero" value={formData.genero} onChange={handleChange} disabled={saving}>
+              <SelectLocal
+                name="genero"
+                value={formData.genero}
+                onChange={handleChange}
+                onBlur={handleBlur}
+                disabled={saving}
+              >
                 <option value="">Seleccione género</option>
                 <option value="Macho">Macho</option>
                 <option value="Hembra">Hembra</option>

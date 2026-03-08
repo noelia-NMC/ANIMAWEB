@@ -1,5 +1,3 @@
-// src/pages/Clientes.jsx
-
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   obtenerClientes,
@@ -14,6 +12,10 @@ import {
   CardHeader, CardTitle, CardInfo, InfoGrid, InfoRow, Label, Value, ButtonGroup,
   EditButton, DeleteButton, EmptyState, ErrorMessage, SearchSection, SearchInput
 } from '../styles/crudStyles';
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_REGEX = /^[0-9+\-\s()]{7,20}$/;
+const CI_REGEX = /^[a-zA-Z0-9-]{4,20}$/;
 
 export default function Clientes() {
   const [clientes, setClientes] = useState([]);
@@ -46,34 +48,77 @@ export default function Clientes() {
     cargarClientes();
   }, [cargarClientes]);
 
+  const validateField = (name, value, currentData = formData) => {
+    const tipo = String(currentData.tipo_cliente || '').toUpperCase();
+    const val = String(value ?? '').trim();
+
+    switch (name) {
+      case 'tipo_cliente':
+        if (!['FIJO', 'OCASIONAL'].includes(tipo)) {
+          return 'Debe seleccionar un tipo válido.';
+        }
+        return null;
+
+      case 'nombre':
+        if (!val) return 'El nombre es obligatorio.';
+        if (val.length < 2) return 'El nombre debe tener al menos 2 caracteres.';
+        if (val.length > 120) return 'El nombre es demasiado largo.';
+        return null;
+
+      case 'telefono':
+        if (!val) return null;
+        if (!PHONE_REGEX.test(val)) return 'Teléfono inválido.';
+        return null;
+
+      case 'ci':
+        if (!val) return null;
+        if (!CI_REGEX.test(val)) return 'CI inválido.';
+        return null;
+
+      case 'email':
+        if (!val) return null;
+        if (!EMAIL_REGEX.test(val)) return 'Email inválido.';
+        return null;
+
+      default:
+        return null;
+    }
+  };
+
   const validate = () => {
     const newErrors = {};
-    const tipo = String(formData.tipo_cliente || '').toUpperCase();
-    const nombre = (formData.nombre || '').trim();
-
-    if (!['FIJO', 'OCASIONAL'].includes(tipo)) {
-      newErrors.tipo_cliente = 'Debe seleccionar un tipo válido.';
-    }
-
-    if (!nombre || nombre.length < 2) {
-      newErrors.nombre = 'El nombre es obligatorio (mín. 2 caracteres).';
-    }
-
-    if (formData.email && !String(formData.email).includes('@')) {
-      newErrors.email = 'Email inválido.';
-    }
-
+    Object.keys(formData).forEach((field) => {
+      const error = validateField(field, formData[field], formData);
+      if (error) newErrors[field] = error;
+    });
     return newErrors;
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
 
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    let cleanedValue = value;
+
+    if (name === 'telefono') {
+      cleanedValue = value.replace(/[^0-9+\-\s()]/g, '');
+    }
+
+    if (name === 'ci') {
+      cleanedValue = value.replace(/[^a-zA-Z0-9-]/g, '');
+    }
+
+    setFormData((prev) => ({ ...prev, [name]: cleanedValue }));
 
     if (errors[name]) {
-      setErrors((prev) => ({ ...prev, [name]: null }));
+      const error = validateField(name, cleanedValue, { ...formData, [name]: cleanedValue });
+      setErrors((prev) => ({ ...prev, [name]: error }));
     }
+  };
+
+  const handleBlur = (e) => {
+    const { name, value } = e.target;
+    const error = validateField(name, value, formData);
+    setErrors((prev) => ({ ...prev, [name]: error }));
   };
 
   const limpiarFormulario = () => {
@@ -103,7 +148,7 @@ export default function Clientes() {
       nombre: formData.nombre.trim(),
       telefono: formData.telefono?.trim() || null,
       ci: formData.ci?.trim() || null,
-      email: formData.email?.trim() || null,
+      email: formData.email?.trim().toLowerCase() || null,
     };
 
     try {
@@ -145,11 +190,8 @@ export default function Clientes() {
 
     try {
       await eliminarCliente(id);
-
-      // ✅ Lo sacamos del estado para que desaparezca al instante
       setClientes((prev) => prev.filter((c) => c.id !== id));
 
-      // si estabas editando ese mismo, limpia
       if (modoEdicion && clienteId === id) limpiarFormulario();
 
       alert('Cliente eliminado correctamente.');
@@ -189,7 +231,12 @@ export default function Clientes() {
 
         <FormGrid onSubmit={handleSubmit} noValidate>
           <FormGroup className="full-width">
-            <Select name="tipo_cliente" value={formData.tipo_cliente} onChange={handleChange}>
+            <Select
+              name="tipo_cliente"
+              value={formData.tipo_cliente}
+              onChange={handleChange}
+              onBlur={handleBlur}
+            >
               <option value="OCASIONAL">Cliente: OCASIONAL</option>
               <option value="FIJO">Cliente: FIJO</option>
             </Select>
@@ -202,6 +249,8 @@ export default function Clientes() {
               placeholder="Nombre completo"
               value={formData.nombre}
               onChange={handleChange}
+              onBlur={handleBlur}
+              maxLength={120}
             />
             <ErrorMessage>{errors.nombre}</ErrorMessage>
           </FormGroup>
@@ -212,6 +261,8 @@ export default function Clientes() {
               placeholder="Teléfono (opcional)"
               value={formData.telefono}
               onChange={handleChange}
+              onBlur={handleBlur}
+              maxLength={20}
             />
             <ErrorMessage>{errors.telefono}</ErrorMessage>
           </FormGroup>
@@ -222,6 +273,8 @@ export default function Clientes() {
               placeholder="CI (opcional)"
               value={formData.ci}
               onChange={handleChange}
+              onBlur={handleBlur}
+              maxLength={20}
             />
             <ErrorMessage>{errors.ci}</ErrorMessage>
           </FormGroup>
@@ -229,9 +282,12 @@ export default function Clientes() {
           <FormGroup className="full-width">
             <Input
               name="email"
+              type="email"
               placeholder="Email (opcional)"
               value={formData.email}
               onChange={handleChange}
+              onBlur={handleBlur}
+              maxLength={120}
             />
             <ErrorMessage>{errors.email}</ErrorMessage>
           </FormGroup>

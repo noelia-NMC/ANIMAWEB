@@ -1,9 +1,8 @@
-// src/pages/LaboratorioResultados.jsx
 import { useEffect, useMemo, useState } from 'react';
 import styled, { keyframes } from 'styled-components';
 import { useAuth } from '../context/AuthContext';
 
-import { obtenerMascotas } from '../services/historial'; // ya lo tienes
+import { obtenerMascotas } from '../services/historial';
 import {
   obtenerResultadosLab,
   crearResultadoLab,
@@ -11,7 +10,6 @@ import {
   eliminarResultadoLab,
 } from '../services/laboratorio';
 
-// Reusamos tus estilos base (inputs/títulos)
 import {
   PageTitle,
   SectionTitle,
@@ -350,6 +348,15 @@ function isProbablyImage(url = '') {
   return u.endsWith('.png') || u.endsWith('.jpg') || u.endsWith('.jpeg') || u.endsWith('.webp');
 }
 
+const ALLOWED_FILE_TYPES = [
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+];
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
 export default function LaboratorioResultados() {
   const { user } = useAuth();
 
@@ -373,8 +380,8 @@ export default function LaboratorioResultados() {
   const cargarTodo = async () => {
     try {
       const [mRes, rRes] = await Promise.all([obtenerMascotas(), obtenerResultadosLab('')]);
-      setMascotas(mRes.data || []);
-      setResultados(rRes.data || []);
+      setMascotas(Array.isArray(mRes.data) ? mRes.data : []);
+      setResultados(Array.isArray(rRes.data) ? rRes.data : []);
     } catch (e) {
       console.error('Error cargando laboratorio:', e);
     }
@@ -384,30 +391,89 @@ export default function LaboratorioResultados() {
     cargarTodo();
   }, []);
 
+  const validateField = (name, value, currentData = formData) => {
+    const val = String(value ?? '').trim();
+
+    switch (name) {
+      case 'mascota_id':
+        if (!currentData.mascota_id) return 'Debe seleccionar una mascota.';
+        return null;
+
+      case 'tipo_examen':
+        if (!val) return 'El tipo de examen es obligatorio.';
+        if (val.length < 3) return 'Debe tener al menos 3 caracteres.';
+        if (val.length > 120) return 'El tipo de examen es demasiado largo.';
+        return null;
+
+      case 'fecha':
+        if (!val) return null;
+        if (Number.isNaN(new Date(val).getTime())) return 'Fecha inválida.';
+        return null;
+
+      case 'notas':
+        if (val.length > 1500) return 'Las notas son demasiado largas.';
+        return null;
+
+      case 'archivo':
+        if (!currentData.id && !currentData.archivo) return 'Debes subir un PDF o imagen.';
+        if (currentData.archivo) {
+          if (!ALLOWED_FILE_TYPES.includes(currentData.archivo.type)) {
+            return 'Solo se permite PDF, PNG, JPG o WEBP.';
+          }
+          if (currentData.archivo.size > MAX_FILE_SIZE) {
+            return 'El archivo no debe superar 10MB.';
+          }
+        }
+        return null;
+
+      default:
+        return null;
+    }
+  };
+
   const validate = () => {
     const newErrors = {};
-    if (!formData.mascota_id) newErrors.mascota_id = 'Debe seleccionar una mascota.';
-    if (!formData.tipo_examen.trim() || formData.tipo_examen.trim().length < 3) {
-      newErrors.tipo_examen = 'Tipo de examen obligatorio (mín. 3 caracteres).';
-    }
-    if (!formData.id && !formData.archivo) newErrors.archivo = 'Debes subir un PDF o imagen.';
+    ['mascota_id', 'tipo_examen', 'fecha', 'notas', 'archivo'].forEach((field) => {
+      const error = validateField(field, formData[field], formData);
+      if (error) newErrors[field] = error;
+    });
     return newErrors;
   };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((p) => ({ ...p, [name]: value }));
-    if (errors[name]) setErrors((p) => ({ ...p, [name]: null }));
+
+    if (errors[name]) {
+      const error = validateField(name, value, { ...formData, [name]: value });
+      setErrors((p) => ({ ...p, [name]: error }));
+    }
+  };
+
+  const handleBlur = (e) => {
+    const { name, value } = e.target;
+    const error = validateField(name, value, formData);
+    setErrors((p) => ({ ...p, [name]: error }));
   };
 
   const handleFile = (e) => {
     const file = e.target.files?.[0] || null;
-    setFormData((p) => ({ ...p, archivo: file }));
-    if (errors.archivo) setErrors((p) => ({ ...p, archivo: null }));
+    const next = { ...formData, archivo: file };
+    setFormData(next);
+
+    const error = validateField('archivo', file, next);
+    setErrors((p) => ({ ...p, archivo: error }));
   };
 
   const resetForm = () => {
-    setFormData({ id: null, mascota_id: '', tipo_examen: '', fecha: '', notas: '', archivo: null });
+    setFormData({
+      id: null,
+      mascota_id: '',
+      tipo_examen: '',
+      fecha: '',
+      notas: '',
+      archivo: null,
+    });
     setErrors({});
   };
 
@@ -419,9 +485,9 @@ export default function LaboratorioResultados() {
     try {
       const fd = new FormData();
       fd.append('mascota_id', formData.mascota_id);
-      fd.append('tipo_examen', formData.tipo_examen);
+      fd.append('tipo_examen', formData.tipo_examen.trim());
       if (formData.fecha) fd.append('fecha', formData.fecha);
-      fd.append('notas', formData.notas || '');
+      fd.append('notas', formData.notas.trim() || '');
       if (formData.archivo) fd.append('archivo', formData.archivo);
 
       if (formData.id) {
@@ -434,7 +500,7 @@ export default function LaboratorioResultados() {
 
       resetForm();
       const rRes = await obtenerResultadosLab('');
-      setResultados(rRes.data || []);
+      setResultados(Array.isArray(rRes.data) ? rRes.data : []);
     } catch (err) {
       console.error('Error guardando:', err);
       alert(err?.response?.data?.message || 'Error al guardar resultado.');
@@ -464,7 +530,7 @@ export default function LaboratorioResultados() {
     try {
       await eliminarResultadoLab(id);
       const rRes = await obtenerResultadosLab('');
-      setResultados(rRes.data || []);
+      setResultados(Array.isArray(rRes.data) ? rRes.data : []);
       alert('Resultado eliminado.');
     } catch (err) {
       console.error('Error eliminando:', err);
@@ -473,7 +539,7 @@ export default function LaboratorioResultados() {
   };
 
   const resultadosFiltrados = useMemo(() => {
-    const q = busqueda.toLowerCase();
+    const q = busqueda.toLowerCase().trim();
     return resultados.filter((r) => {
       const matchMascota = !filtroMascota || String(r.mascota_id) === String(filtroMascota);
       const matchText =
@@ -499,7 +565,6 @@ export default function LaboratorioResultados() {
       </TopBar>
 
       <Grid>
-        {/* Subir / Editar */}
         <Card>
           <CardHeader>
             <HeaderTitle>
@@ -516,7 +581,12 @@ export default function LaboratorioResultados() {
 
             <Form onSubmit={handleSubmit} noValidate>
               <FormGroup>
-                <Select name="mascota_id" value={formData.mascota_id} onChange={handleChange}>
+                <Select
+                  name="mascota_id"
+                  value={formData.mascota_id}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                >
                   <option value="">Seleccione una mascota</option>
                   {mascotas.map((m) => (
                     <option key={m.id} value={m.id}>
@@ -533,12 +603,21 @@ export default function LaboratorioResultados() {
                   placeholder="Tipo de examen (Ej: Hemograma, Rayos X...)"
                   value={formData.tipo_examen}
                   onChange={handleChange}
+                  onBlur={handleBlur}
+                  maxLength={120}
                 />
                 <ErrorMessage>{errors.tipo_examen}</ErrorMessage>
               </FormGroup>
 
               <FormGroup>
-                <Input type="date" name="fecha" value={formData.fecha} onChange={handleChange} />
+                <Input
+                  type="date"
+                  name="fecha"
+                  value={formData.fecha}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                />
+                <ErrorMessage>{errors.fecha}</ErrorMessage>
               </FormGroup>
 
               <FormGroup>
@@ -547,7 +626,10 @@ export default function LaboratorioResultados() {
                   placeholder="Notas (opcional)"
                   value={formData.notas}
                   onChange={handleChange}
+                  onBlur={handleBlur}
+                  maxLength={1500}
                 />
+                <ErrorMessage>{errors.notas}</ErrorMessage>
               </FormGroup>
 
               <FormGroup>
@@ -566,7 +648,11 @@ export default function LaboratorioResultados() {
                   </FileLine>
 
                   <div style={{ marginTop: 10 }}>
-                    <Input type="file" onChange={handleFile} />
+                    <Input
+                      type="file"
+                      accept=".pdf,image/png,image/jpeg,image/jpg,image/webp"
+                      onChange={handleFile}
+                    />
                     <ErrorMessage>{errors.archivo}</ErrorMessage>
                     <SmallHint>
                       {formData.id
@@ -597,7 +683,6 @@ export default function LaboratorioResultados() {
           </CardBody>
         </Card>
 
-        {/* Resultados */}
         <Card>
           <CardHeader>
             <HeaderTitle>
@@ -671,11 +756,12 @@ export default function LaboratorioResultados() {
                             </LinkBtn>
 
                             <ResultActions>
-                              <TinyBtn onClick={() => handleEdit(r)} hoverBd={colors.primary}>
+                              <TinyBtn type="button" onClick={() => handleEdit(r)} hoverBd={colors.primary}>
                                 Editar
                               </TinyBtn>
 
                               <TinyBtn
+                                type="button"
                                 onClick={() => handleDelete(r.id)}
                                 bg="rgba(231,76,60,0.08)"
                                 color={colors.danger}
