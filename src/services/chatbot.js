@@ -33,23 +33,29 @@ export const sendVeterinaryQuery = async (query, history = [], imageFile = null)
       formData.append('image', imageFile);
 
       const response = await axios.post(
-        `${API}/chatbot/query-image`,
+        `${API}/chatbot/image`,
         formData,
         getHeaders(true)
       );
+
       return response.data;
     }
 
     const response = await axios.post(
-      `${API}/chatbot/query-text`,
+      `${API}/chatbot`,
       { query, history },
       getHeaders()
     );
+
     return response.data;
   } catch (error) {
     console.error('❌ Error en el servicio de chatbot:', error);
+
     const errorMessage =
-      error.response?.data?.error || 'Hubo un problema de conexión con Dr. AnimBot. 🐾';
+      error.response?.data?.message ||
+      error.response?.data?.error ||
+      'Hubo un problema de conexión con Dr. AnimBot. 🐾';
+
     throw new Error(errorMessage);
   }
 };

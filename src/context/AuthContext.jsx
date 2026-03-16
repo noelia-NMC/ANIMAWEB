@@ -2,7 +2,15 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 
 const AuthContext = createContext(null);
-const API = import.meta.env.VITE_API_URL;
+
+const rawApi = import.meta.env.VITE_API_URL || '';
+
+const normalizeBase = (base) => {
+  const clean = String(base || '').trim().replace(/\/+$/, '');
+  return clean.replace(/\/api$/i, '');
+};
+
+const API = `${normalizeBase(rawApi)}/api`;
 
 export function useAuth() {
   return useContext(AuthContext);
@@ -22,12 +30,11 @@ export function AuthProvider({ children }) {
     }
   });
 
-  const [token, setToken] = useState(localStorage.getItem('token') || null);
+  const [token, setToken] = useState(() => localStorage.getItem('token') || null);
   const [loading, setLoading] = useState(true);
 
-  // ✅ helpers por permisos
   const hasPermission = (perm) => {
-    if (user?.rol === 'admin') return true; // admin ve todo
+    if (user?.rol === 'admin') return true;
     if (!user?.permisos) return false;
     return user.permisos.includes(perm);
   };
@@ -39,55 +46,86 @@ export function AuthProvider({ children }) {
     return perms.some((p) => user.permisos.includes(p));
   };
 
-  // ✅ trae user real + permisos desde backend (SIEMPRE ACTUALIZADO)
-  const refreshMe = async () => {
+  const logout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setUser(null);
+    setToken(null);
+  };
+
+  const refreshMe = async ({ silent = false } = {}) => {
     const storedToken = localStorage.getItem('token');
+
     if (!storedToken) {
-      setUser(null);
-      setToken(null);
+      if (!silent) {
+        setUser(null);
+        setToken(null);
+      }
       return null;
     }
 
     try {
       const res = await axios.get(`${API}/auth/me`, getAuthHeaders(storedToken));
+
       setUser(res.data);
       setToken(storedToken);
       localStorage.setItem('user', JSON.stringify(res.data));
+
       return res.data;
     } catch (e) {
+      const status = e?.response?.status;
       console.error('refreshMe error:', e?.response?.data || e.message);
-      logout();
+
+      if (status === 401 || status === 403) {
+        logout();
+      } else {
+        setToken(storedToken);
+
+        try {
+          const rawUser = localStorage.getItem('user');
+          const parsedUser = rawUser ? JSON.parse(rawUser) : null;
+          if (parsedUser) setUser(parsedUser);
+        } catch (err) {
+          console.warn('No se pudo restaurar el usuario desde localStorage');
+        }
+      }
+
       return null;
     }
   };
 
-  // 🔄 Cargar desde localStorage + refrescar permisos al iniciar (clave)
   useEffect(() => {
+    let mounted = true;
+
     (async () => {
       const storedToken = localStorage.getItem('token');
+
       if (!storedToken) {
-        setLoading(false);
+        if (mounted) setLoading(false);
         return;
       }
+
       await refreshMe();
-      setLoading(false);
+
+      if (mounted) setLoading(false);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  // 🔄 EXTRA: refrescar permisos cuando vuelves al tab (admin cambió roles)
   useEffect(() => {
     const onFocus = async () => {
       if (localStorage.getItem('token')) {
-        await refreshMe();
+        await refreshMe({ silent: true });
       }
     };
+
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 🔐 Login tradicional (loginUser devuelve token + user + permisos)
   const login = (userData, userToken) => {
     localStorage.setItem('user', JSON.stringify(userData));
     localStorage.setItem('token', userToken);
@@ -95,7 +133,6 @@ export function AuthProvider({ children }) {
     setToken(userToken);
   };
 
-  // 🔐 Login desde onboarding
   const loginWithToken = async (userToken, userData) => {
     localStorage.setItem('token', userToken);
     setToken(userToken);
@@ -109,15 +146,6 @@ export function AuthProvider({ children }) {
     setUser(userData);
   };
 
-  // 🚪 Logout
-  const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    setUser(null);
-    setToken(null);
-  };
-
-  // 🔄 Actualizar usuario (preserva rol y clinica)
   const updateUser = (updatedUserData) => {
     setUser((prev) => {
       const base = prev || {};
