@@ -212,7 +212,7 @@ export default function ReportesDashboard({ isOpen, onClose }) {
         <Body>
           {!isAdmin && (
             <Banner>
-              👀 Estás como <b>veterinario</b>. Puedes ver reportes, pero exportar es solo para admins.
+              👀 Puedes ver reportes, pero exportar es solo para admins.
             </Banner>
           )}
 
