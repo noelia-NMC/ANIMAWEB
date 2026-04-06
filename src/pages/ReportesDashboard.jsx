@@ -212,7 +212,7 @@ export default function ReportesDashboard({ isOpen, onClose }) {
         <Body>
           {!isAdmin && (
             <Banner>
-              👀 Puedes ver reportes, pero exportar es solo para admins.
+              👀 Necesitas permisos.
             </Banner>
           )}
 
